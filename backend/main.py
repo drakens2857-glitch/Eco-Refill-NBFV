@@ -1,15 +1,8 @@
 from fastapi import FastAPI
-from dotenv import load_dotenv
-import os
+from routers import auth, materiales, reportes
 
-load_dotenv()
+app = FastAPI(title="Eco-Refill API")
 
-port = os.getenv("PORT")
-
-print(port)
-
-app = FastAPI()
-
-@app.get("/")
-def inicio():
-    return {"mensaje": "Backend funcionando correctamente"}
+app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
+app.include_router(materiales.router, prefix="/api/materiales", tags=["Materiales"])
+app.include_router(reportes.router, prefix="/api/reportes", tags=["Reportes"])
