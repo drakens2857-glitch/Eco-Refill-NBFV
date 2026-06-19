@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "992396324099",
+    "project_id": "eco-refill-31771",
+    "storage_bucket": "eco-refill-31771.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:992396324099:android:c50c775bf04e6d05b30d36",
+        "android_client_info": {
+          "package_name": "eco.refill.an"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "992396324099-484fet5nn9j6ve413de5q45qu0p90cv2.apps.googleusercontent.com",
+          
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCGPC7vewZKAGk0wfHQUGuKfcwk5evA3Ao"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "992396324099-484fet5nn9j6ve413de5q45qu0p90cv2.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "992396324099-3h509c38ca8sam6g9o2hmrqavag5d2v9.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.frontend"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
