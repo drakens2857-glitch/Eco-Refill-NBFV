@@ -1,8 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/auth_service.dart';
 
-class TareasScreen extends StatelessWidget {
+class TareasScreen extends StatefulWidget {
   const TareasScreen({super.key});
+
+  @override
+  State<TareasScreen> createState() => _TareasScreenState();
+}
+
+class _TareasScreenState extends State<TareasScreen> {
+  String? userRole;
+  final AuthService _authService = AuthService();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserRole();
+  }
+
+  Future<void> _loadUserRole() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      final role = await _authService.getUserRole(uid);
+      setState(() {
+        userRole = role;
+      });
+    }
+  }
 
   Future<void> _crearTarea(BuildContext context) async {
     final nombreController = TextEditingController();
@@ -32,10 +58,7 @@ class TareasScreen extends StatelessWidget {
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancelar", style: TextStyle(color: Colors.redAccent)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar", style: TextStyle(color: Colors.redAccent))),
           ElevatedButton(
             onPressed: () async {
               await FirebaseFirestore.instance.collection("tareas").add({
@@ -84,10 +107,7 @@ class TareasScreen extends StatelessWidget {
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancelar", style: TextStyle(color: Colors.redAccent)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar", style: TextStyle(color: Colors.redAccent))),
           ElevatedButton(
             onPressed: () async {
               await FirebaseFirestore.instance.collection("tareas").doc(id).update({
@@ -116,10 +136,7 @@ class TareasScreen extends StatelessWidget {
         title: const Text("Eliminar Tarea", style: TextStyle(color: Colors.cyanAccent)),
         content: const Text("¿Seguro de eliminar esta tarea?", style: TextStyle(color: Colors.white)),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancelar", style: TextStyle(color: Colors.redAccent)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar", style: TextStyle(color: Colors.redAccent))),
           ElevatedButton(
             onPressed: () async {
               await FirebaseFirestore.instance.collection("tareas").doc(id).delete();
@@ -140,6 +157,12 @@ class TareasScreen extends StatelessWidget {
         backgroundColor: Colors.black,
         title: const Text("Tareas", style: TextStyle(color: Colors.cyanAccent)),
         centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.cyanAccent),
+          onPressed: () {
+            Navigator.pushReplacementNamed(context, '/pantallabienvenida');
+          },
+        ),
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection("tareas").snapshots(),
@@ -164,31 +187,36 @@ class TareasScreen extends StatelessWidget {
                     "Importancia: ${data["importancia"] ?? "-"}",
                     style: const TextStyle(color: Colors.white70),
                   ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit, color: Colors.cyanAccent),
-                        onPressed: () => _editarTarea(context, id, data),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.redAccent),
-                        onPressed: () => _confirmarEliminar(context, id),
-                      ),
-                    ],
-                  ),
+                  trailing: userRole == "jefe"
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit, color: Colors.cyanAccent),
+                              onPressed: () => _editarTarea(context, id, data),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.redAccent),
+                              onPressed: () => _confirmarEliminar(context, id),
+                            ),
+                          ],
+                        )
+                      : null,
                 ),
               );
             },
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.cyanAccent,
-        foregroundColor: Colors.black,
-        child: const Icon(Icons.add),
-        onPressed: () => _crearTarea(context),
-      ),
+      floatingActionButton: userRole == "jefe"
+          ? FloatingActionButton(
+              backgroundColor: Colors.cyanAccent,
+              foregroundColor: Colors.black,
+              child: const Icon(Icons.add),
+              onPressed: () => _crearTarea(context),
+            )
+          : null,
     );
   }
 }
+

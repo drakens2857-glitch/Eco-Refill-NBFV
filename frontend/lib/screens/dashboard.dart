@@ -1,7 +1,62 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/auth_service.dart';
+import '../services/api_service.dart';
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  final api = ApiService();
+  final AuthService _authService = AuthService();
+
+  List posts = [];
+  bool loading = true;
+
+  final _descController = TextEditingController();
+  final _imgController = TextEditingController();
+
+  String? userRole;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPosts();
+    _loadUserRole();
+  }
+
+  Future<void> _loadPosts() async {
+    final data = await api.getPosts();
+    setState(() {
+      posts = data;
+      loading = false;
+    });
+  }
+
+  Future<void> _loadUserRole() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      final role = await _authService.getUserRole(uid);
+      setState(() {
+        userRole = role;
+      });
+    }
+  }
+
+  Future<void> _createPost() async {
+    await api.createPost(
+      "Frankyn",
+      _descController.text,
+      _imgController.text,
+    );
+    _descController.clear();
+    _imgController.clear();
+    _loadPosts();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -10,91 +65,99 @@ class DashboardScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.black,
         title: const Text(
-          "Panel Principal",
+          "Publicaciones",
           style: TextStyle(color: Colors.cyanAccent),
         ),
         centerTitle: true,
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.eco, size: 80, color: Colors.cyanAccent),
-            const SizedBox(height: 20),
-            const Text(
-              "Bienvenido a Eco-Refill",
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-                letterSpacing: 1.5,
-              ),
-            ),
-            const SizedBox(height: 40),
-
-            // Botón Materiales
-            ElevatedButton.icon(
-              onPressed: () => Navigator.pushNamed(context, '/materiales'),
-              icon: const Icon(Icons.recycling, color: Colors.black),
-              label: const Text("Materiales"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.cyanAccent,
-                foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.5,
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Botón Tareas
-            ElevatedButton.icon(
-              onPressed: () => Navigator.pushNamed(context, '/tareas'),
-              icon: const Icon(Icons.task, color: Colors.black),
-              label: const Text("Tareas"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.cyanAccent,
-                foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.5,
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Botón Perfil
-            ElevatedButton.icon(
-              onPressed: () => Navigator.pushNamed(context, '/perfil'),
-              icon: const Icon(Icons.person, color: Colors.black),
-              label: const Text("Perfil"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.cyanAccent,
-                foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.5,
-                ),
-              ),
-            ),
-          ],
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.cyanAccent),
+          onPressed: () {
+            // 🔹 Siempre vuelve a la pantalla de bienvenida
+            Navigator.pushReplacementNamed(context, '/pantallabienvenida');
+          },
         ),
+      ),
+
+      body: Column(
+        children: [
+          // 🔹 Solo el jefe ve el formulario
+          if (userRole == "jefe")
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _descController,
+                    decoration: const InputDecoration(
+                      labelText: "Descripción",
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _imgController,
+                    decoration: const InputDecoration(
+                      labelText: "URL de imagen",
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  ElevatedButton.icon(
+                    onPressed: _createPost,
+                    icon: const Icon(Icons.send, color: Colors.black),
+                    label: const Text("Guardar publicación"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.cyanAccent,
+                      foregroundColor: Colors.black,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          const Divider(color: Colors.cyanAccent),
+
+          // 🔹 Feed estilo Facebook (visible para todos)
+          Expanded(
+            child: loading
+                ? const Center(child: CircularProgressIndicator())
+                : ListView.builder(
+                    itemCount: posts.length,
+                    itemBuilder: (context, index) {
+                      final post = posts[index];
+                      return Card(
+                        color: Colors.black.withOpacity(0.8),
+                        margin: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (post["imageUrl"] != null &&
+                                post["imageUrl"].isNotEmpty)
+                              Image.network(post["imageUrl"], fit: BoxFit.cover),
+                            Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Text(
+                                post["description"] ?? "",
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Text(
+                                "Autor: ${post["author"] ?? "Desconocido"}",
+                                style: const TextStyle(color: Colors.cyanAccent),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }

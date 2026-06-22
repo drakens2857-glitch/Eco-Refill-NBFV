@@ -22,62 +22,17 @@ class MaterialesScreen extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(
-                controller: nombreController,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  labelText: "Nombre",
-                  labelStyle: TextStyle(color: Colors.cyanAccent),
-                ),
-              ),
-              TextField(
-                controller: grosorController,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  labelText: "Grosor",
-                  labelStyle: TextStyle(color: Colors.cyanAccent),
-                ),
-              ),
-              TextField(
-                controller: colorController,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  labelText: "Color",
-                  labelStyle: TextStyle(color: Colors.cyanAccent),
-                ),
-              ),
-              TextField(
-                controller: flexibilidadController,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  labelText: "Flexibilidad",
-                  labelStyle: TextStyle(color: Colors.cyanAccent),
-                ),
-              ),
-              TextField(
-                controller: resistenciaController,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  labelText: "Resistencia",
-                  labelStyle: TextStyle(color: Colors.cyanAccent),
-                ),
-              ),
-              TextField(
-                controller: familiaController,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  labelText: "Familia (Composición Química)",
-                  labelStyle: TextStyle(color: Colors.cyanAccent),
-                ),
-              ),
+              TextField(controller: nombreController, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: "Nombre", labelStyle: TextStyle(color: Colors.cyanAccent))),
+              TextField(controller: grosorController, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: "Grosor", labelStyle: TextStyle(color: Colors.cyanAccent))),
+              TextField(controller: colorController, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: "Color", labelStyle: TextStyle(color: Colors.cyanAccent))),
+              TextField(controller: flexibilidadController, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: "Flexibilidad", labelStyle: TextStyle(color: Colors.cyanAccent))),
+              TextField(controller: resistenciaController, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: "Resistencia", labelStyle: TextStyle(color: Colors.cyanAccent))),
+              TextField(controller: familiaController, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: "Familia (Composición Química)", labelStyle: TextStyle(color: Colors.cyanAccent))),
             ],
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancelar", style: TextStyle(color: Colors.redAccent)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar", style: TextStyle(color: Colors.redAccent))),
           ElevatedButton(
             onPressed: () async {
               await FirebaseFirestore.instance.collection("materiales").add({
@@ -126,10 +81,7 @@ class MaterialesScreen extends StatelessWidget {
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancelar", style: TextStyle(color: Colors.redAccent)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar", style: TextStyle(color: Colors.redAccent))),
           ElevatedButton(
             onPressed: () async {
               await FirebaseFirestore.instance.collection("materiales").doc(id).update({
@@ -158,10 +110,7 @@ class MaterialesScreen extends StatelessWidget {
         title: const Text("Eliminar Material", style: TextStyle(color: Colors.cyanAccent)),
         content: const Text("¿Seguro de eliminar este material?", style: TextStyle(color: Colors.white)),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancelar", style: TextStyle(color: Colors.redAccent)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar", style: TextStyle(color: Colors.redAccent))),
           ElevatedButton(
             onPressed: () async {
               await FirebaseFirestore.instance.collection("materiales").doc(id).delete();
@@ -182,6 +131,13 @@ class MaterialesScreen extends StatelessWidget {
         backgroundColor: Colors.black,
         title: const Text("Materiales", style: TextStyle(color: Colors.cyanAccent)),
         centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.cyanAccent),
+          onPressed: () {
+            // 🔹 Siempre vuelve a la pantalla de bienvenida
+            Navigator.pushReplacementNamed(context, '/pantallabienvenida');
+          },
+        ),
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection("materiales").snapshots(),
@@ -209,14 +165,8 @@ class MaterialesScreen extends StatelessWidget {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit, color: Colors.cyanAccent),
-                        onPressed: () => _editarMaterial(context, id, data),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.redAccent),
-                        onPressed: () => _confirmarEliminar(context, id),
-                      ),
+                      IconButton(icon: const Icon(Icons.edit, color: Colors.cyanAccent), onPressed: () => _editarMaterial(context, id, data)),
+                      IconButton(icon: const Icon(Icons.delete, color: Colors.redAccent), onPressed: () => _confirmarEliminar(context, id)),
                     ],
                   ),
                 ),

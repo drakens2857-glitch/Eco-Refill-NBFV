@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+import 'pantallabienvenida.dart'; // 🔹 Importa tu nueva pantalla
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,42 +15,56 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   final AuthService _authService = AuthService();
 
-  // 🔹 Método para login con correo/contraseña
-  void _login() async {
-    final user = await _authService.login(
-      _emailController.text,
-      _passwordController.text,
+  void _showAlert(String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Error"),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
     );
-    if (user != null) {
-      Navigator.pushNamed(context, '/dashboard');
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Error al iniciar sesión")),
-      );
-    }
   }
 
-  // 🔹 Método para login con Google
-  Future<void> _loginWithGoogle() async {
+  Future<void> _login() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      _showAlert("Por favor ingresa correo y contraseña.");
+      return;
+    }
+
     try {
-      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
-      if (googleUser == null) return; // usuario canceló
+      final user = await _authService.login(email, password);
 
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
-
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      await FirebaseAuth.instance.signInWithCredential(credential);
-
-      Navigator.pushReplacementNamed(context, '/dashboard');
+      if (user != null) {
+        // 🔹 Ahora navega a PantallaBienvenida
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const PantallaBienvenida()),
+          (Route<dynamic> route) => false,
+        );
+      } else {
+        _showAlert("Error al iniciar sesión. Verifica tus datos.");
+      }
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'user-not-found') {
+        _showAlert("No existe un usuario con ese correo.");
+      } else if (e.code == 'wrong-password') {
+        _showAlert("La contraseña es incorrecta.");
+      } else if (e.code == 'invalid-email') {
+        _showAlert("El formato del correo no es válido.");
+      } else {
+        _showAlert("Error: ${e.message}");
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error al iniciar sesión con Google: $e")),
-      );
+      _showAlert("Error inesperado: $e");
     }
   }
 
@@ -87,6 +101,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 20),
+
+                  // 🔹 Campo de correo
                   TextField(
                     controller: _emailController,
                     style: const TextStyle(color: Colors.white),
@@ -104,6 +120,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
+
+                  // 🔹 Campo de contraseña
                   TextField(
                     controller: _passwordController,
                     obscureText: true,
@@ -122,6 +140,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 20),
+
+                  // 🔹 Botón iniciar sesión
                   ElevatedButton(
                     onPressed: _login,
                     style: ElevatedButton.styleFrom(
@@ -139,30 +159,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 1.5,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextButton(
-                    onPressed: () => Navigator.pushNamed(context, '/register'),
-                    child: const Text(
-                      "Registrarse",
-                      style: TextStyle(color: Colors.cyanAccent),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  // 🔹 Botón de Google
-                  ElevatedButton.icon(
-                    onPressed: _loginWithGoogle,
-                    icon: const Icon(Icons.login, color: Colors.black),
-                    label: const Text("Iniciar sesión con Google"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.cyanAccent,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
                       ),
                     ),
                   ),
