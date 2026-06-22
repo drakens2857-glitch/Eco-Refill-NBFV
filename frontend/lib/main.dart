@@ -10,6 +10,13 @@ import 'screens/dashboard.dart';
 import 'screens/materiales.dart';
 import 'screens/tareas.dart';
 import 'screens/perfil.dart';
+import 'screens/usuarios.dart';   
+import 'screens/ingreso.dart';    
+import 'screens/procesos.dart';   
+import 'screens/feed_publico.dart';
+import 'screens/home.dart';
+import 'screens/reportes.dart';
+import 'screens/pantallabienvenida.dart'; // 🔹 Importa tu nueva pantalla
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,14 +57,22 @@ class MyApp extends StatelessWidget {
           ),
         ),
       ),
-      initialRoute: '/login',
+      initialRoute: '/home',
       routes: {
+        '/home': (context) => const HomeScreen(),
         '/login': (context) => const LoginScreen(),
         '/register': (context) => const RegisterScreen(),
         '/dashboard': (context) => const DashboardScreen(),
         '/materiales': (context) => const MaterialesScreen(),
         '/tareas': (context) => const TareasScreen(),
         '/perfil': (context) => const PerfilScreen(),
+        '/usuarios': (context) => const UsuariosScreen(),
+        '/ingreso': (context) => const IngresoScreen(),
+        '/procesos': (context) => const ProcesosScreen(),
+        '/feed_publico': (context) => const FeedPublicoScreen(),
+        '/reportes': (context) => const ReportesScreen(),
+        '/pantallabienvenida': (context) => const PantallaBienvenida(),
+
       },
     );
   }
