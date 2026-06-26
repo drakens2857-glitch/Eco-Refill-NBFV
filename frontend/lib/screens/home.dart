@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'feed_publico.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -54,7 +55,14 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           TextButton(
-            onPressed: () => Navigator.pushNamed(context, '/feed_publico'),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const FeedPublicoScreen(desdeLogin: false),
+                ),
+              );
+            },
             child: const Text(
               "Usuarios no registrados",
               style: TextStyle(color: Colors.cyanAccent),

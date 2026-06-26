@@ -44,7 +44,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final user = await _authService.login(email, password);
 
       if (user != null) {
-        // 🔹 Ahora navega a PantallaBienvenida
+        // 🔹 Usuario autenticado → PantallaBienvenida
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (context) => const PantallaBienvenida()),

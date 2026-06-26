@@ -16,7 +16,7 @@ import 'screens/procesos.dart';
 import 'screens/feed_publico.dart';
 import 'screens/home.dart';
 import 'screens/reportes.dart';
-import 'screens/pantallabienvenida.dart'; // 🔹 Importa tu nueva pantalla
+import 'screens/pantallabienvenida.dart'; 
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -69,7 +69,7 @@ class MyApp extends StatelessWidget {
         '/usuarios': (context) => const UsuariosScreen(),
         '/ingreso': (context) => const IngresoScreen(),
         '/procesos': (context) => const ProcesosScreen(),
-        '/feed_publico': (context) => const FeedPublicoScreen(),
+        '/feed_publico': (context) => const FeedPublicoScreen(desdeLogin: false),
         '/reportes': (context) => const ReportesScreen(),
         '/pantallabienvenida': (context) => const PantallaBienvenida(),
 

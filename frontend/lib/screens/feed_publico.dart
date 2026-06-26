@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 
 class FeedPublicoScreen extends StatefulWidget {
-  const FeedPublicoScreen({super.key});
+  final bool desdeLogin; // 🔹 nuevo parámetro
+
+  const FeedPublicoScreen({super.key, required this.desdeLogin});
 
   @override
   State<FeedPublicoScreen> createState() => _FeedPublicoScreenState();
@@ -41,8 +43,13 @@ class _FeedPublicoScreenState extends State<FeedPublicoScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.cyanAccent),
           onPressed: () {
-            // 🔹 Siempre vuelve a la pantalla de bienvenida
-            Navigator.pushReplacementNamed(context, '/pantallabienvenida');
+            if (widget.desdeLogin) {
+              // 🔹 Si viene de login → PantallaBienvenida
+              Navigator.pushReplacementNamed(context, '/pantallabienvenida');
+            } else {
+              // 🔹 Si viene de Home → HomeScreen
+              Navigator.pushReplacementNamed(context, '/home');
+            }
           },
         ),
       ),
