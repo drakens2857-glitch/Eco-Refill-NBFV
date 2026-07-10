@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'pantallabienvenida.dart'; // 🔹 Importa tu nueva pantalla
+import 'pantallabienvenida.dart';
+import 'facerecognition.dart'; // 🔹 Importa la nueva pantalla
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -44,7 +45,6 @@ class _LoginScreenState extends State<LoginScreen> {
       final user = await _authService.login(email, password);
 
       if (user != null) {
-        // 🔹 Usuario autenticado → PantallaBienvenida
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (context) => const PantallaBienvenida()),
@@ -159,6 +159,49 @@ class _LoginScreenState extends State<LoginScreen> {
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 1.5,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  // 🔹 Cuadro de reconocimiento facial
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const FaceRecognitionScreen(),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.black,
+                        borderRadius: BorderRadius.circular(15),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.cyanAccent.withOpacity(0.6),
+                            blurRadius: 10,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: const [
+                          Icon(Icons.face, size: 60, color: Colors.cyanAccent),
+                          SizedBox(height: 10),
+                          Text(
+                            "Reconocimiento Facial",
+                            style: TextStyle(
+                              color: Colors.cyanAccent,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),

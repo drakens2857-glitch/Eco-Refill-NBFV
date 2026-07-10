@@ -1,3 +1,5 @@
+import 'dart:html' as html; // 🔹 para usar cámara en Flutter Web
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
@@ -18,6 +20,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String? _selectedCargo;
   final AuthService _authService = AuthService();
 
+  Uint8List? _capturedFace; // 🔹 aquí guardamos la foto del rostro
+
   void _showAlert(String message) {
     showDialog(
       context: context,
@@ -34,6 +38,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
+  Future<void> _captureFace() async {
+    final videoElement = html.document.querySelector('video') as html.VideoElement?;
+
+    if (videoElement == null || videoElement.videoWidth == 0) {
+      _showAlert("La cámara aún no está lista.");
+      return;
+    }
+
+    final canvas = html.CanvasElement(
+      width: videoElement.videoWidth,
+      height: videoElement.videoHeight,
+    );
+    final ctx = canvas.context2D;
+    ctx.drawImage(videoElement, 0, 0);
+
+    final blob = await canvas.toBlob('image/jpeg');
+    if (blob == null) {
+      _showAlert("No se pudo capturar el rostro.");
+      return;
+    }
+
+    final reader = html.FileReader();
+    reader.readAsArrayBuffer(blob);
+    await reader.onLoad.first;
+
+    setState(() {
+      _capturedFace = reader.result as Uint8List;
+    });
+  }
+
   void _register() async {
     final name = _nameController.text.trim();
     final email = _emailController.text.trim();
@@ -41,32 +75,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final phone = _phoneController.text.trim();
     final cargo = _selectedCargo ?? "";
 
-    if (name.isEmpty || email.isEmpty || password.isEmpty || phone.isEmpty || cargo.isEmpty) {
-      _showAlert("Por favor completa todos los campos.");
+    if (name.isEmpty || email.isEmpty || password.isEmpty || phone.isEmpty || cargo.isEmpty || _capturedFace == null) {
+      _showAlert("Por favor completa todos los campos y captura tu rostro.");
       return;
     }
 
     try {
-      final success = await _authService.register(name, email, password, phone, cargo);
+      final success = await _authService.registerWithFace(
+        name, email, password, phone, cargo, _capturedFace!,
+      );
 
       if (success) {
-        Navigator.pop(context);
+        Navigator.pushReplacementNamed(context, '/login');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Usuario $name registrado correctamente")),
         );
-      } else {
-        _showAlert("Error al registrar usuario. Intenta nuevamente.");
       }
     } on FirebaseAuthException catch (e) {
-      if (e.code == 'email-already-in-use') {
-        _showAlert("El correo ya está registrado.");
-      } else if (e.code == 'invalid-email') {
-        _showAlert("El formato del correo no es válido.");
-      } else if (e.code == 'weak-password') {
-        _showAlert("La contraseña es demasiado débil.");
-      } else {
-        _showAlert("Error: ${e.message}");
-      }
+      _showAlert("Error: ${e.message}");
     } catch (e) {
       _showAlert("Error inesperado: $e");
     }
@@ -81,7 +107,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.cyanAccent),
           onPressed: () {
-            // 🔹 Siempre vuelve a la pantalla de bienvenida
             Navigator.pushReplacementNamed(context, '/pantallabienvenida');
           },
         ),
@@ -154,6 +179,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       dropdownColor: Colors.black,
                       style: const TextStyle(color: Colors.white),
                     ),
+                    const SizedBox(height: 24),
+
+                    // 🔹 Preview de cámara en vivo
+                    const SizedBox(
+                      height: 200,
+                      child: HtmlElementView(viewType: 'camera-view'),
+                    ),
+                    const SizedBox(height: 16),
+
+                    ElevatedButton(
+                      onPressed: _captureFace,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueAccent,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text("Capturar rostro"),
+                    ),
+                    const SizedBox(height: 16),
+                    if (_capturedFace != null)
+                      Image.memory(_capturedFace!, height: 150), // preview de la foto capturada
                     const SizedBox(height: 24),
                     ElevatedButton(
                       onPressed: _register,

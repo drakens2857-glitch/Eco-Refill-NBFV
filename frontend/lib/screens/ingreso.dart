@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
+import 'models/ingreso_model.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+
 
 class IngresoScreen extends StatefulWidget {
   const IngresoScreen({super.key});
@@ -55,31 +59,48 @@ class _IngresoScreenState extends State<IngresoScreen>
   }
 
   Widget _buildIngresoList(String categoria) {
-    final lista = ingresos[categoria] ?? [];
-    if (lista.isEmpty) {
-      return const Center(
-        child: Text("No hay ingresos registrados",
-            style: TextStyle(color: Colors.white)),
-      );
-    }
-    return ListView.builder(
-      itemCount: lista.length,
-      itemBuilder: (context, index) {
-        final item = lista[index];
-        return Card(
-          color: Colors.black.withOpacity(0.8),
-          margin: const EdgeInsets.all(12),
-          child: ListTile(
-            leading: const Icon(Icons.recycling, color: Colors.cyanAccent),
-            title: Text(
-              "Color: ${item["color"]}, Cantidad: ${item["cantidad"]}",
-              style: const TextStyle(color: Colors.white),
-            ),
-            subtitle: Text(
-              "Fecha: ${item["fecha"]}",
-              style: const TextStyle(color: Colors.cyanAccent),
-            ),
-          ),
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('ingresos')
+          .where('categoria', isEqualTo: categoria)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final docs = snapshot.data!.docs;
+        if (docs.isEmpty) {
+          return const Center(
+            child: Text("No hay ingresos registrados",
+                style: TextStyle(color: Colors.white)),
+          );
+        }
+
+        return ListView(
+          children: docs.map((doc) {
+            // 🔹 Usamos el modelo Ingreso
+            final ingreso = Ingreso.fromMap(
+              doc.data() as Map<String, dynamic>,
+              doc.id,
+            );
+
+            return Card(
+              color: Colors.black.withOpacity(0.8),
+              margin: const EdgeInsets.all(12),
+              child: ListTile(
+                leading: const Icon(Icons.recycling, color: Colors.cyanAccent),
+                title: Text(
+                  "Color: ${ingreso.color}, Cantidad: ${ingreso.cantidad}",
+                  style: const TextStyle(color: Colors.white),
+                ),
+                subtitle: Text(
+                  "Fecha: ${ingreso.fecha}",
+                  style: const TextStyle(color: Colors.cyanAccent),
+                ),
+              ),
+            );
+          }).toList(),
         );
       },
     );
@@ -125,14 +146,19 @@ class _IngresoScreenState extends State<IngresoScreen>
                 style: TextStyle(color: Colors.redAccent)),
           ),
           ElevatedButton(
-            onPressed: () {
-              setState(() {
-                ingresos[categoria]!.add({
-                  "color": colorController.text,
-                  "cantidad": int.tryParse(cantidadController.text) ?? 0,
-                  "fecha": DateTime.now().toString(),
-                });
-              });
+            onPressed: () async {
+              final nuevoIngreso = {
+                "categoria": categoria,
+                "color": colorController.text,
+                "cantidad": int.tryParse(cantidadController.text) ?? 0,
+                "fecha": DateTime.now().toString(),
+              };
+
+              // 🔹 Guardar en Firestore
+              await FirebaseFirestore.instance
+                  .collection('ingresos')
+                  .add(nuevoIngreso);
+
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text("Ingreso agregado en $categoria")),
@@ -144,6 +170,7 @@ class _IngresoScreenState extends State<IngresoScreen>
       ),
     );
   }
+
 
   @override
   Widget build(BuildContext context) {

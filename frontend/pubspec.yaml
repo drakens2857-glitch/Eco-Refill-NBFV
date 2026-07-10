@@ -11,17 +11,20 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # Firebase (todas compatibles entre sí)
+  # 🔹 Firebase (todas compatibles entre sí, generación 6.x)
   firebase_core: ^4.11.0
   firebase_auth: ^6.5.3
   cloud_firestore: ^6.6.0
+ 
 
-  # Utilidades
+  # 🔹 Utilidades
   http: ^1.2.2
   cupertino_icons: ^1.0.8
   image_picker: ^1.1.2
   flutter_dotenv: ^6.0.1
   google_sign_in: ^6.2.1
+  camera: ^0.10.5+2   # 🔹 aquí va, no como bloque aparte
+  convert: ^3.1.1     # 🔹 agregado para decodificar hex a bytes
 
 dev_dependencies:
   flutter_test:
@@ -37,4 +40,3 @@ flutter:
     - assets/images/filamento2.png
     - assets/images/filamento3.png
     - assets/images/filamento4.png
-    

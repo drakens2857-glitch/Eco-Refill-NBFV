@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:typed_data';
+import 'package:http/http.dart' as http;
+import 'dart:convert'; // 🔹 para decodificar JSON y hex
 import '../services/auth_service.dart';
-import '../services/api_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -11,14 +14,13 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  final api = ApiService();
   final AuthService _authService = AuthService();
 
   List posts = [];
   bool loading = true;
 
   final _descController = TextEditingController();
-  final _imgController = TextEditingController();
+  Uint8List? _selectedImage;
 
   String? userRole;
 
@@ -30,11 +32,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadPosts() async {
-    final data = await api.getPosts();
-    setState(() {
-      posts = data;
-      loading = false;
-    });
+    final response = await http.get(Uri.parse("http://localhost:8000/api/posts/"));
+    if (response.statusCode == 200) {
+      setState(() {
+        posts = jsonDecode(response.body); // 🔹 ahora sí parseamos JSON
+        loading = false;
+      });
+    } else {
+      print("Error al cargar posts: ${response.statusCode}");
+    }
   }
 
   Future<void> _loadUserRole() async {
@@ -47,15 +53,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked != null) {
+      final bytes = await picked.readAsBytes();
+      setState(() {
+        _selectedImage = bytes;
+      });
+    }
+  }
+
   Future<void> _createPost() async {
-    await api.createPost(
-      "Frankyn",
-      _descController.text,
-      _imgController.text,
+    if (_selectedImage == null || _descController.text.isEmpty) return;
+
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse("http://localhost:8000/api/posts/create_post"), // 🔹 corregido
     );
-    _descController.clear();
-    _imgController.clear();
-    _loadPosts();
+    request.fields['description'] = _descController.text;
+    request.fields['author'] =
+        FirebaseAuth.instance.currentUser?.email ?? "Desconocido";
+    request.files.add(http.MultipartFile.fromBytes(
+      'file',
+      _selectedImage!,
+      filename: "post.png",
+    ));
+
+    final response = await request.send();
+    if (response.statusCode == 200) {
+      _descController.clear();
+      setState(() {
+        _selectedImage = null;
+      });
+      _loadPosts();
+    } else {
+      print("Error al crear post: ${response.statusCode}");
+    }
+  }
+
+  // 🔹 Función para decodificar hex a bytes
+  Uint8List? _decodeHex(String? hexString) {
+    if (hexString == null || hexString.isEmpty) return null;
+    final result = <int>[];
+    for (var i = 0; i < hexString.length; i += 2) {
+      result.add(int.parse(hexString.substring(i, i + 2), radix: 16));
+    }
+    return Uint8List.fromList(result);
   }
 
   @override
@@ -72,15 +116,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.cyanAccent),
           onPressed: () {
-            // 🔹 Siempre vuelve a la pantalla de bienvenida
             Navigator.pushReplacementNamed(context, '/pantallabienvenida');
           },
         ),
       ),
-
       body: Column(
         children: [
-          // 🔹 Solo el jefe ve el formulario
           if (userRole == "jefe")
             Padding(
               padding: const EdgeInsets.all(12),
@@ -94,12 +135,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  TextField(
-                    controller: _imgController,
-                    decoration: const InputDecoration(
-                      labelText: "URL de imagen",
-                      border: OutlineInputBorder(),
-                    ),
+                  Row(
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: _pickImage,
+                        icon: const Icon(Icons.image, color: Colors.black),
+                        label: const Text("Seleccionar imagen"),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.cyanAccent,
+                          foregroundColor: Colors.black,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      if (_selectedImage != null)
+                        const Icon(Icons.check_circle, color: Colors.green),
+                    ],
                   ),
                   const SizedBox(height: 10),
                   ElevatedButton.icon(
@@ -114,10 +164,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
               ),
             ),
-
           const Divider(color: Colors.cyanAccent),
-
-          // 🔹 Feed estilo Facebook (visible para todos)
           Expanded(
             child: loading
                 ? const Center(child: CircularProgressIndicator())
@@ -125,15 +172,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     itemCount: posts.length,
                     itemBuilder: (context, index) {
                       final post = posts[index];
+                      final imageBytes = _decodeHex(post["imageBytes"]);
+
                       return Card(
                         color: Colors.black.withOpacity(0.8),
                         margin: const EdgeInsets.all(12),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if (post["imageUrl"] != null &&
-                                post["imageUrl"].isNotEmpty)
-                              Image.network(post["imageUrl"], fit: BoxFit.cover),
+                            if (imageBytes != null)
+                              Image.memory(imageBytes, fit: BoxFit.cover),
                             Padding(
                               padding: const EdgeInsets.all(8.0),
                               child: Text(
