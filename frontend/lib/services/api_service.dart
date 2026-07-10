@@ -1,5 +1,6 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:typed_data';
 
 class ApiService {
   final String baseUrl = "http://127.0.0.1:8000/api";
@@ -32,22 +33,25 @@ class ApiService {
     }
   }
 
-  /// 🔹 Crear nueva publicación
-  Future<void> createPost(String author, String description, String imageUrl) async {
-    final response = await http.post(
-      Uri.parse("$baseUrl/posts/"), // ✅ barra final
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode({
-        "author": author,
-        "description": description,
-        "imageUrl": imageUrl,
-      }),
+  /// 🔹 Crear nueva publicación con imagen (via backend)
+  Future<void> createPost(String author, String description, Uint8List imageBytes) async {
+    var request = http.MultipartRequest(
+      'POST',
+      Uri.parse("$baseUrl/posts/create_post"),
     );
+    request.fields['author'] = author;
+    request.fields['description'] = description;
+    request.files.add(http.MultipartFile.fromBytes(
+      'file',
+      imageBytes,
+      filename: "post.png",
+    ));
 
-    if (response.statusCode == 200 || response.statusCode == 201) {
-      print("Publicación creada: ${response.body}");
+    var response = await request.send();
+    if (response.statusCode == 200) {
+      print("Publicación creada con éxito");
     } else {
-      print("Error al crear publicación: ${response.body}");
+      print("Error al crear publicación: ${response.statusCode}");
     }
   }
 }

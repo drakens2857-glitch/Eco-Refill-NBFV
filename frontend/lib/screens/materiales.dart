@@ -1,12 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-class MaterialesScreen extends StatelessWidget {
+class MaterialesScreen extends StatefulWidget {
   const MaterialesScreen({super.key});
+
+  @override
+  State<MaterialesScreen> createState() => _MaterialesScreenState();
+}
+
+class _MaterialesScreenState extends State<MaterialesScreen> {
+  DocumentSnapshot? ingresoSeleccionado;
+  int cantidadUsada = 0;
 
   Future<void> _crearMaterial(BuildContext context) async {
     final nombreController = TextEditingController();
-    final grosorController = TextEditingController();
+    final grosorController = TextEditingController();   
     final colorController = TextEditingController();
     final flexibilidadController = TextEditingController();
     final resistenciaController = TextEditingController();
@@ -22,12 +30,73 @@ class MaterialesScreen extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // 🔹 Campos del material
               TextField(controller: nombreController, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: "Nombre", labelStyle: TextStyle(color: Colors.cyanAccent))),
               TextField(controller: grosorController, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: "Grosor", labelStyle: TextStyle(color: Colors.cyanAccent))),
               TextField(controller: colorController, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: "Color", labelStyle: TextStyle(color: Colors.cyanAccent))),
               TextField(controller: flexibilidadController, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: "Flexibilidad", labelStyle: TextStyle(color: Colors.cyanAccent))),
               TextField(controller: resistenciaController, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: "Resistencia", labelStyle: TextStyle(color: Colors.cyanAccent))),
               TextField(controller: familiaController, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(labelText: "Familia (Composición Química)", labelStyle: TextStyle(color: Colors.cyanAccent))),
+
+              const SizedBox(height: 12),
+
+              // 🔹 Dropdown de ingresos
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('ingresos').snapshots(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const CircularProgressIndicator();
+                  }
+
+                  final docs = snapshot.data!.docs;
+                  if (docs.isEmpty) {
+                    return const Text(
+                      "No hay ingresos disponibles",
+                      style: TextStyle(color: Colors.white),
+                    );
+                  }
+
+                  return DropdownButton<DocumentSnapshot>(
+                    value: ingresoSeleccionado,
+                    hint: const Text(
+                      "Selecciona ingreso",
+                      style: TextStyle(color: Colors.cyanAccent),
+                    ),
+                    dropdownColor: Colors.black,   // 🔹 Fondo oscuro
+                    isExpanded: true,              // 🔹 Ocupa todo el ancho
+                    items: docs.map((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      return DropdownMenuItem(
+                        value: doc,
+                        child: Text(
+                          "${data['categoria']} - ${data['color']} (Disponible: ${data['cantidad']})",
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (nuevo) {
+                      setState(() {
+                        ingresoSeleccionado = nuevo;
+                      });
+                    },
+                  );
+                },
+              ),
+
+              const SizedBox(height: 12),
+
+              // 🔹 Cantidad usada
+              TextField(
+                keyboardType: TextInputType.number,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: "Cantidad a usar",
+                  labelStyle: TextStyle(color: Colors.cyanAccent),
+                ),
+                onChanged: (val) {
+                  cantidadUsada = int.tryParse(val) ?? 0;
+                },
+              ),
             ],
           ),
         ),
@@ -35,16 +104,40 @@ class MaterialesScreen extends StatelessWidget {
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar", style: TextStyle(color: Colors.redAccent))),
           ElevatedButton(
             onPressed: () async {
-              await FirebaseFirestore.instance.collection("materiales").add({
-                "nombre": nombreController.text,
-                "grosor": grosorController.text,
-                "color": colorController.text,
-                "flexibilidad": flexibilidadController.text,
-                "resistencia": resistenciaController.text,
-                "familia": familiaController.text,
-                "createdAt": Timestamp.now(),
-              });
-              Navigator.pop(context);
+              if (ingresoSeleccionado != null && cantidadUsada > 0) {
+                final data = ingresoSeleccionado!.data() as Map<String, dynamic>;
+                final disponible = data['cantidad'] as int;
+
+                if (cantidadUsada <= disponible) {
+                  // Guardar material
+                  await FirebaseFirestore.instance.collection("materiales").add({
+                    "nombre": nombreController.text,
+                    "grosor": grosorController.text,
+                    "color": colorController.text,
+                    "flexibilidad": flexibilidadController.text,
+                    "resistencia": resistenciaController.text,
+                    "familia": familiaController.text,
+                    "ingresoId": ingresoSeleccionado!.id,
+                    "cantidadUsada": cantidadUsada,
+                    "createdAt": Timestamp.now(),
+                  });
+
+                  // Actualizar ingreso
+                  await FirebaseFirestore.instance
+                      .collection("ingresos")
+                      .doc(ingresoSeleccionado!.id)
+                      .update({"cantidad": disponible - cantidadUsada});
+
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Material creado y ingreso actualizado")),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Cantidad usada mayor a disponible")),
+                  );
+                }
+              }
             },
             child: const Text("Crear"),
           ),
@@ -54,6 +147,7 @@ class MaterialesScreen extends StatelessWidget {
   }
 
   Future<void> _editarMaterial(BuildContext context, String id, Map<String, dynamic> data) async {
+    // 🔹 Mantengo tu lógica de edición igual
     final nombreController = TextEditingController(text: data["nombre"]);
     final grosorController = TextEditingController(text: data["grosor"]);
     final colorController = TextEditingController(text: data["color"]);
@@ -159,7 +253,7 @@ class MaterialesScreen extends StatelessWidget {
                   subtitle: Text(
                     "Grosor: ${data["grosor"] ?? "-"} | Color: ${data["color"] ?? "-"}\n"
                     "Flexibilidad: ${data["flexibilidad"] ?? "-"} | Resistencia: ${data["resistencia"] ?? "-"}\n"
-                    "Familia: ${data["familia"] ?? "-"}",
+                    "Familia: ${data["familia"] ?? "-"} | Cantidad usada: ${data["cantidadUsada"] ?? "-"}",
                     style: const TextStyle(color: Colors.white70),
                   ),
                   trailing: Row(
@@ -184,3 +278,4 @@ class MaterialesScreen extends StatelessWidget {
     );
   }
 }
+

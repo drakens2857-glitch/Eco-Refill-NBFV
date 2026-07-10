@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'dart:typed_data'; // 🔹 para manejar bytes
+import 'package:convert/convert.dart'; // 🔹 para convertir hex a bytes
 import '../services/api_service.dart';
 
 class FeedPublicoScreen extends StatefulWidget {
-  final bool desdeLogin; // 🔹 nuevo parámetro
+  final bool desdeLogin;
 
   const FeedPublicoScreen({super.key, required this.desdeLogin});
 
@@ -29,6 +31,16 @@ class _FeedPublicoScreenState extends State<FeedPublicoScreen> {
     });
   }
 
+  // 🔹 Función para convertir hex a bytes
+  Uint8List? _decodeImage(String? hexString) {
+    if (hexString == null || hexString.isEmpty) return null;
+    try {
+      return Uint8List.fromList(hex.decode(hexString));
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -44,10 +56,8 @@ class _FeedPublicoScreenState extends State<FeedPublicoScreen> {
           icon: const Icon(Icons.arrow_back, color: Colors.cyanAccent),
           onPressed: () {
             if (widget.desdeLogin) {
-              // 🔹 Si viene de login → PantallaBienvenida
               Navigator.pushReplacementNamed(context, '/pantallabienvenida');
             } else {
-              // 🔹 Si viene de Home → HomeScreen
               Navigator.pushReplacementNamed(context, '/home');
             }
           },
@@ -59,15 +69,21 @@ class _FeedPublicoScreenState extends State<FeedPublicoScreen> {
               itemCount: posts.length,
               itemBuilder: (context, index) {
                 final post = posts[index];
+                final imageBytes = _decodeImage(post["imageBytes"]);
+
                 return Card(
                   color: Colors.black.withOpacity(0.8),
                   margin: const EdgeInsets.all(12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (post["imageUrl"] != null &&
-                          post["imageUrl"].isNotEmpty)
-                        Image.network(post["imageUrl"], fit: BoxFit.cover),
+                      // 🔹 Mostrar imagen guardada en Firestore como hex
+                      if (imageBytes != null)
+                        Image.memory(
+                          imageBytes,
+                          fit: BoxFit.cover,
+                        ),
+
                       Padding(
                         padding: const EdgeInsets.all(8.0),
                         child: Text(

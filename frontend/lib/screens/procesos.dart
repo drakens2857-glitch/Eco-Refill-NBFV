@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_service.dart';
 
 class ProcesosScreen extends StatefulWidget {
@@ -13,22 +14,17 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
   final AuthService _authService = AuthService();
   String? userRole;
 
-  List<Map<String, dynamic>> procesos = [
-    {
-      "usuario": "Carlos",
-      "descripcion": "Clasificación de botellas plásticas",
-      "fecha": "2026-06-21 15:30",
-      "estado": "En proceso"
-    },
-    {
-      "usuario": "Ana",
-      "descripcion": "Revisión de canecas recicladas",
-      "fecha": "2026-06-21 14:10",
-      "estado": "No completado"
-    },
+  final fases = [
+    "Limpieza",
+    "Preparación",
+    "Corte en tiras",
+    "Termoformado",
+    "Moldeado",
+    "Enfriamiento",
+    "Enrollado",
+    "Almacenamiento",
+    "Proceso finalizado",
   ];
-
-  final estados = ["Completado", "En proceso", "No completado"];
 
   @override
   void initState() {
@@ -48,7 +44,7 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
 
   void _mostrarFormularioProceso() {
     final descController = TextEditingController();
-    String estadoSeleccionado = "En proceso";
+    String faseSeleccionada = "Limpieza";
 
     showDialog(
       context: context,
@@ -70,13 +66,13 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
             const SizedBox(height: 12),
             DropdownButton<String>(
               dropdownColor: Colors.black,
-              value: estadoSeleccionado,
-              items: estados.map((e) => DropdownMenuItem(
+              value: faseSeleccionada,
+              items: fases.map((e) => DropdownMenuItem(
                 value: e,
                 child: Text(e, style: const TextStyle(color: Colors.white)),
               )).toList(),
               onChanged: (nuevo) {
-                estadoSeleccionado = nuevo!;
+                faseSeleccionada = nuevo!;
               },
             ),
           ],
@@ -88,14 +84,12 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
                 style: TextStyle(color: Colors.redAccent)),
           ),
           ElevatedButton(
-            onPressed: () {
-              setState(() {
-                procesos.add({
-                  "usuario": "Usuario actual",
-                  "descripcion": descController.text,
-                  "fecha": DateTime.now().toString(),
-                  "estado": estadoSeleccionado,
-                });
+            onPressed: () async {
+              await FirebaseFirestore.instance.collection("procesos").add({
+                "usuario": "Usuario actual",
+                "descripcion": descController.text,
+                "fecha": DateTime.now().toString(),
+                "fase": faseSeleccionada,
               });
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
@@ -121,7 +115,6 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.cyanAccent),
           onPressed: () {
-            // 🔹 Siempre vuelve a la pantalla de bienvenida
             Navigator.pushReplacementNamed(context, '/pantallabienvenida');
           },
         ),
@@ -141,55 +134,143 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
                 ),
               ),
             ),
+
+          // 🔹 Procesos activos
           Expanded(
-            child: ListView.builder(
-              itemCount: procesos.length,
-              itemBuilder: (context, index) {
-                final proceso = procesos[index];
-                return Card(
-                  color: Colors.black.withOpacity(0.8),
-                  margin: const EdgeInsets.all(12),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("Usuario: ${proceso["usuario"]}",
-                            style: const TextStyle(
-                                color: Colors.cyanAccent,
-                                fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 6),
-                        Text("Descripción: ${proceso["descripcion"]}",
-                            style: const TextStyle(color: Colors.white)),
-                        const SizedBox(height: 6),
-                        Text("Fecha: ${proceso["fecha"]}",
-                            style: const TextStyle(color: Colors.white70)),
-                        const SizedBox(height: 12),
-                        Row(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance.collection("procesos").snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return const CircularProgressIndicator();
+                final docs = snapshot.data!.docs;
+
+                return ListView.builder(
+                  itemCount: docs.length,
+                  itemBuilder: (context, index) {
+                    final data = docs[index].data() as Map<String, dynamic>;
+                    final id = docs[index].id;
+
+                    return Card(
+                      color: Colors.black.withOpacity(0.8),
+                      margin: const EdgeInsets.all(12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text("Estado: ",
-                                style: TextStyle(color: Colors.cyanAccent)),
-                            DropdownButton<String>(
-                              dropdownColor: Colors.black,
-                              value: proceso["estado"],
-                              items: estados.map((estado) {
-                                return DropdownMenuItem(
-                                  value: estado,
-                                  child: Text(estado,
-                                      style: const TextStyle(color: Colors.white)),
-                                );
-                              }).toList(),
-                              onChanged: (nuevoEstado) {
-                                setState(() {
-                                  proceso["estado"] = nuevoEstado!;
-                                });
-                              },
+                            Text("Usuario: ${data["usuario"]}",
+                                style: const TextStyle(
+                                    color: Colors.cyanAccent,
+                                    fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 6),
+                            Text("Descripción: ${data["descripcion"]}",
+                                style: const TextStyle(color: Colors.white)),
+                            const SizedBox(height: 6),
+                            Text("Fecha: ${data["fecha"]}",
+                                style: const TextStyle(color: Colors.white70)),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                const Text("Fase: ",
+                                    style: TextStyle(color: Colors.cyanAccent)),
+                                DropdownButton<String>(
+                                  dropdownColor: Colors.black,
+                                  value: data["fase"],
+                                  items: fases.map((fase) {
+                                    return DropdownMenuItem(
+                                      value: fase,
+                                      child: Text(fase,
+                                          style: const TextStyle(color: Colors.white)),
+                                    );
+                                  }).toList(),
+                                  onChanged: (nuevoFase) async {
+                                    if (nuevoFase == "Proceso finalizado") {
+                                      // 🔹 Mover a historial
+                                      await FirebaseFirestore.instance.collection("historial").add(data);
+                                      await FirebaseFirestore.instance.collection("procesos").doc(id).delete();
+                                    } else {
+                                      await FirebaseFirestore.instance.collection("procesos").doc(id).update({
+                                        "fase": nuevoFase,
+                                      });
+                                    }
+                                  },
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                      ],
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+
+          // 🔹 Historial
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance.collection("historial").snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return const SizedBox();
+                final docs = snapshot.data!.docs;
+
+                if (docs.isEmpty) return const SizedBox();
+
+                return Column(
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Text("Historial",
+                          style: TextStyle(color: Colors.cyanAccent, fontSize: 18)),
                     ),
-                  ),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: docs.length,
+                        itemBuilder: (context, index) {
+                          final data = docs[index].data() as Map<String, dynamic>;
+                          return Card(
+                            color: Colors.black.withOpacity(0.8),
+                            margin: const EdgeInsets.all(12),
+                            child: ListTile(
+                              title: Text(data["descripcion"],
+                                  style: const TextStyle(color: Colors.cyanAccent)),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.remove_red_eye,
+                                    color: Colors.cyanAccent),
+                                onPressed: () {
+                                  showDialog(
+                                    context: context,
+                                    builder: (context) => AlertDialog(
+                                      backgroundColor: Colors.black,
+                                      title: const Text("Detalle del Proceso",
+                                          style: TextStyle(color: Colors.cyanAccent)),
+                                      content: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text("Descripción: ${data["descripcion"]}",
+                                              style: const TextStyle(color: Colors.white)),
+                                          Text("Fecha: ${data["fecha"]}",
+                                              style: const TextStyle(color: Colors.white70)),
+                                        ],
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(context),
+                                          child: const Text("Cerrar",
+                                              style: TextStyle(color: Colors.redAccent)),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 );
               },
             ),
