@@ -4,6 +4,7 @@ import 'login.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
+import 'web_camera_view.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -22,6 +23,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final AuthService _authService = AuthService();
 
   Uint8List? _capturedFace; // 🔹 foto del rostro
+
+  @override
+  void initState() {
+    super.initState();
+    // 🔹 Registra el elemento <video> HTML antes de que se construya
+    // el HtmlElementView. Sin esto la cámara no aparece.
+    registerCameraView();
+  }
 
   // Paleta de colores del diseño Neón / Cyberpunk
   static const Color neonPurple = Color(0xFFA855F7);

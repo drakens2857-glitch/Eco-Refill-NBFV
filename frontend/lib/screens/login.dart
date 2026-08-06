@@ -87,13 +87,20 @@ class _LoginScreenState extends State<LoginScreen>
       final user = await _authService.login(email, password);
 
       if (user != null) {
-        Navigator.pushAndRemoveUntil(
+
+        Navigator.push(
           context,
-          MaterialPageRoute(builder: (context) => const PantallaBienvenida()),
-          (Route<dynamic> route) => false,
+          MaterialPageRoute(
+            builder: (_) => FaceRecognitionScreen(
+              uid: user.uid,
+            ),
+          ),
         );
+
       } else {
+
         _showAlert("Error al iniciar sesión. Verifica tus datos.");
+
       }
     } on FirebaseAuthException catch (e) {
       if (e.code == 'user-not-found') {
@@ -109,7 +116,70 @@ class _LoginScreenState extends State<LoginScreen>
       _showAlert("Error inesperado: $e");
     }
   }
+  Future<void> _startFaceLogin() async {
+    final emailController = TextEditingController();
 
+    final email = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFFF5EFE6),
+        title: const Text(
+          "Reconocimiento Facial",
+          style: TextStyle(
+            color: Color(0xFF9C4A2F),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: TextField(
+          controller: emailController,
+          autofocus: true,
+          style: const TextStyle(
+            color: Color(0xFF2C2C2C),
+            fontSize: 15,
+          ),
+          decoration: InputDecoration(
+            hintText: "Ingresa tu correo",
+            hintStyle: TextStyle(color: Colors.grey.shade500),
+            enabledBorder: const UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFF9C4A2F)),
+            ),
+            focusedBorder: const UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFF2C5E3B), width: 2),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancelar"),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(context, emailController.text.trim()),
+            child: const Text("Continuar"),
+          ),
+        ],
+      ),
+    );
+
+    if (email == null || email.isEmpty) return;
+
+    final uid = await _authService.getUidByEmail(email);
+
+    if (uid == null) {
+      _showAlert("No se encontró ningún usuario con ese correo.");
+      return;
+    }
+
+    if (!mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FaceRecognitionScreen(uid: uid),
+      ),
+    );
+  }
   @override
   void dispose() {
     _pulseController.dispose();
@@ -474,15 +544,7 @@ class _LoginScreenState extends State<LoginScreen>
 
                             InkWell(
                               borderRadius: BorderRadius.circular(14),
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        const FaceRecognitionScreen(),
-                                  ),
-                                );
-                              },
+                              onTap: _startFaceLogin,
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 20,

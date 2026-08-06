@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from routers import auth, materiales, reportes, posts, procesar
 
+
 app = FastAPI(title="Eco-Refill API")
 
 app.add_middleware(

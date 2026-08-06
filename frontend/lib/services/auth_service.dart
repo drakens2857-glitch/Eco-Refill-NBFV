@@ -11,6 +11,7 @@ class AuthService {
   String? _adminEmail;
   String? _adminPassword;
 
+  /// 🔹 Login con email y contraseña
   Future<User?> login(String email, String password) async {
     try {
       UserCredential credential = await _auth.signInWithEmailAndPassword(
@@ -26,7 +27,9 @@ class AuthService {
     }
   }
 
-  Future<bool> register(String name, String email, String password, String phone, String cargo) async {
+  /// 🔹 Registro normal
+  Future<bool> register(
+      String name, String email, String password, String phone, String cargo) async {
     try {
       UserCredential credential = await _auth.createUserWithEmailAndPassword(
         email: email,
@@ -60,6 +63,7 @@ class AuthService {
     }
   }
 
+  /// 🔹 Registro con rostro
   Future<bool> registerWithFace(
       String name,
       String email,
@@ -68,7 +72,7 @@ class AuthService {
       String cargo,
       Uint8List faceBytes) async {
     try {
-      var uri = Uri.parse("http://localhost:8000/api/auth/register_with_face"); // 🔹 corregido
+      var uri = Uri.parse("http://localhost:8000/api/auth/register_with_face");
       var request = http.MultipartRequest("POST", uri);
 
       request.fields["name"] = name;
@@ -96,13 +100,16 @@ class AuthService {
   /// 🔹 Login con rostro reconocido (usando UID)
   Future<bool> loginWithFace(String uid) async {
     try {
-      final doc = await _db.collection("users").doc(uid).get();
-      if (doc.exists) {
-        return true; // Usuario existe en Firestore
+      final email = await getEmailFromUid(uid);
+      if (email == null) {
+        return false;
       }
-      return false;
+
+      // Aquí podrías implementar lógica adicional si necesitas autenticar con Firebase
+      // pero recuerda que Firebase no permite login solo con email sin contraseña.
+      return true;
     } catch (e) {
-      print("Error en login facial: $e");
+      print("Error login facial: $e");
       return false;
     }
   }
@@ -121,12 +128,37 @@ class AuthService {
     }
   }
 
+  /// 🔹 Obtener UID desde el email
+  /// 🔹 Obtener UID desde el email (vía backend, evita permisos de Firestore)
+  Future<String?> getUidByEmail(String email) async {
+    try {
+      final uri = Uri.parse(
+        "http://127.0.0.1:8000/api/auth/uid_by_email?email=$email",
+      );
+
+      final response = await http.get(uri);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data["uid"];
+      }
+
+      return null;
+    } catch (e) {
+      print("Error obteniendo UID desde email: $e");
+      return null;
+    }
+  }
+
+  /// 🔹 Cerrar sesión
   Future<void> logout() async {
     await _auth.signOut();
   }
 
+  /// 🔹 Usuario actual
   User? get currentUser => _auth.currentUser;
 
+  /// 🔹 Obtener rol del usuario
   Future<String?> getUserRole(String uid) async {
     final doc = await _db.collection("users").doc(uid).get();
     if (doc.exists) {

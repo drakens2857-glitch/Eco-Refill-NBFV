@@ -17,9 +17,11 @@ import 'screens/feed_publico.dart';
 import 'screens/home.dart';
 import 'screens/reportes.dart';
 import 'screens/pantallabienvenida.dart';
-import 'screens/facerecognition.dart';
 
-// 🔹 Import específico para Web
+// 🔹 Ya NO necesitamos importar FaceRecognition aquí
+// import 'screens/facerecognition.dart';
+
+// Web
 import 'dart:html' as html;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:ui_web' as ui_web;
@@ -33,29 +35,22 @@ Future<void> main() async {
 
   await dotenv.load(fileName: "assets/.env");
 
-  // Registrar cámara solo si es Web
   if (kIsWeb) {
     ui_web.platformViewRegistry.registerViewFactory(
       'camera-view',
       (int viewId) {
         final video = html.VideoElement()
           ..autoplay = true
-          ..muted = true // 🔹 necesario para autoplay en Chrome
+          ..muted = true
           ..style.width = '100%'
           ..style.height = '100%';
 
-        // 🔹 playsinline evita que Safari/iOS abra pantalla completa
         video.setAttribute('playsinline', 'true');
 
-        // Conectar la cámara
         html.window.navigator.mediaDevices
             ?.getUserMedia({'video': true}).then((stream) {
           video.srcObject = stream;
-          video.play().catchError((e) {
-            print("Error al reproducir el video: $e");
-          });
-        }).catchError((e) {
-          print("Error al acceder a la cámara: $e");
+          video.play();
         });
 
         return video;
@@ -74,39 +69,47 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Eco-Refill Futurista',
+
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF0F2027),
         primaryColor: Colors.cyanAccent,
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.cyanAccent,
-            foregroundColor: Colors.black,
-            textStyle: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        ),
       ),
-      initialRoute: '/home',
+
+      initialRoute: "/home",
+
       routes: {
-        '/home': (context) => const HomeScreen(),
-        '/login': (context) => const LoginScreen(),
-        '/register': (context) => const RegisterScreen(),
-        '/dashboard': (context) => const DashboardScreen(),
-        '/materiales': (context) => const MaterialesScreen(),
-        '/tareas': (context) => const TareasScreen(),
-        '/perfil': (context) => const PerfilScreen(),
-        '/usuarios': (context) => const UsuariosScreen(),
-        '/ingreso': (context) => const IngresoScreen(),
-        '/procesos': (context) => const ProcesosScreen(),
-        '/feed_publico': (context) => const FeedPublicoScreen(desdeLogin: false),
-        '/reportes': (context) => const ReportesScreen(),
-        '/pantallabienvenida': (context) => const PantallaBienvenida(),
-        '/facerecognition': (context) => const FaceRecognitionScreen(),
+
+        "/home": (_) => const HomeScreen(),
+
+        "/login": (_) => const LoginScreen(),
+
+        "/register": (_) => const RegisterScreen(),
+
+        "/dashboard": (_) => const DashboardScreen(),
+
+        "/materiales": (_) => const MaterialesScreen(),
+
+        "/tareas": (_) => const TareasScreen(),
+
+        "/perfil": (_) => const PerfilScreen(),
+
+        "/usuarios": (_) => const UsuariosScreen(),
+
+        "/ingreso": (_) => const IngresoScreen(),
+
+        "/procesos": (_) => const ProcesosScreen(),
+
+        "/feed_publico": (_) => const FeedPublicoScreen(
+              desdeLogin: false,
+            ),
+
+        "/reportes": (_) => const ReportesScreen(),
+
+        "/pantallabienvenida": (_) => const PantallaBienvenida(),
+
+        // ❌ ELIMINAR ESTA RUTA
+        // "/facerecognition": (_) => const FaceRecognitionScreen(),
+
       },
     );
   }
