@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
-import 'models/ingreso_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
-
 
 class IngresoScreen extends StatefulWidget {
   const IngresoScreen({super.key});
@@ -15,31 +12,71 @@ class IngresoScreen extends StatefulWidget {
 
 class _IngresoScreenState extends State<IngresoScreen>
     with SingleTickerProviderStateMixin {
+  static const Color darkBg = Color(0xFF0F0716);
+  static const Color sidebarBg = Color(0xFF070216);
+  static const Color sidebarBorder = Color(0xFF1E1035);
+  static const Color cardBg = Color(0xFF170C28);
+  static const Color neonPurple = Color(0xFFA855F7);
+  static const Color statPink = Color(0xFFEC4899);
+  static const Color statCyan = Color(0xFF22D3EE);
+
+  final List<String> categorias = const [
+    "Botellas",
+    "Botellones",
+    "Canecas",
+    "Canastas",
+  ];
+
   late TabController _tabController;
   final AuthService _authService = AuthService();
   String? userRole;
 
-  final ingresos = {
-    "Botellas": [
-      {"color": "Verde", "cantidad": 20, "fecha": "2026-06-21 15:30"},
-      {"color": "Transparente", "cantidad": 15, "fecha": "2026-06-21 14:10"},
-    ],
-    "Botellones": [
-      {"color": "Azul", "cantidad": 5, "fecha": "2026-06-21 13:00"},
-    ],
-    "Canecas": [
-      {"color": "Negro", "cantidad": 2, "fecha": "2026-06-21 12:45"},
-    ],
-    "Canastas": [
-      {"color": "Rojo", "cantidad": 8, "fecha": "2026-06-21 11:20"},
-    ],
-  };
+  final Map<String, TextEditingController> _cantidadControllers = {};
+  final Map<String, TextEditingController> _notasControllers = {};
+  final Map<String, String?> _colorSeleccionado = {};
+  final Map<String, DateTime> _fechaSeleccionada = {};
+  final Map<String, bool> _verTodos = {};
+
+  static const List<String> _coloresDisponibles = [
+    "Rojo",
+    "Azul",
+    "Verde",
+    "Amarillo",
+    "Negro",
+    "Blanco",
+    "Naranja",
+    "Transparente",
+    "Morado",
+    "Gris",
+  ];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: categorias.length, vsync: this);
+    _tabController.addListener(() => setState(() {}));
+
+    for (final categoria in categorias) {
+      _cantidadControllers[categoria] = TextEditingController();
+      _notasControllers[categoria] = TextEditingController();
+      _colorSeleccionado[categoria] = null;
+      _fechaSeleccionada[categoria] = DateTime.now();
+      _verTodos[categoria] = false;
+    }
+
     _loadUserRole();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    for (final controller in _cantidadControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _notasControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
   }
 
   Future<void> _loadUserRole() async {
@@ -52,176 +89,1010 @@ class _IngresoScreenState extends State<IngresoScreen>
     }
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
+  Future<void> _handleLogout() async {
+    await _authService.logout();
+    if (mounted) {
+      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+    }
   }
 
-  Widget _buildIngresoList(String categoria) {
+  IconData _iconForCategoria(String categoria) {
+    switch (categoria) {
+      case "Botellas":
+        return Icons.local_drink_outlined;
+      case "Botellones":
+        return Icons.oil_barrel_outlined;
+      case "Canecas":
+        return Icons.delete_outline;
+      case "Canastas":
+        return Icons.inventory_2_outlined;
+      default:
+        return Icons.recycling_outlined;
+    }
+  }
+
+  Color _colorFromName(String? name) {
+    switch ((name ?? "").toLowerCase()) {
+      case "rojo":
+        return Colors.redAccent;
+      case "azul":
+        return Colors.blueAccent;
+      case "verde":
+        return Colors.greenAccent;
+      case "amarillo":
+        return Colors.amber;
+      case "negro":
+        return Colors.white70;
+      case "blanco":
+        return Colors.white;
+      case "naranja":
+        return Colors.orangeAccent;
+      case "transparente":
+        return Colors.white38;
+      case "morado":
+        return neonPurple;
+      case "gris":
+        return Colors.grey;
+      default:
+        return neonPurple;
+    }
+  }
+
+  String _twoDigits(int value) => value.toString().padLeft(2, '0');
+
+  String _formatDate(DateTime d) =>
+      "${_twoDigits(d.day)}/${_twoDigits(d.month)}/${d.year}";
+
+  String _formatTime(DateTime d) =>
+      "${_twoDigits(d.hour)}:${_twoDigits(d.minute)}:${_twoDigits(d.second)}";
+
+  Future<void> _pickFechaHora(String categoria) async {
+    final actual = _fechaSeleccionada[categoria] ?? DateTime.now();
+
+    final fecha = await showDatePicker(
+      context: context,
+      initialDate: actual,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (fecha == null) return;
+
+    if (!mounted) return;
+    final hora = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(actual),
+    );
+    if (hora == null) return;
+
+    setState(() {
+      _fechaSeleccionada[categoria] = DateTime(
+        fecha.year,
+        fecha.month,
+        fecha.day,
+        hora.hour,
+        hora.minute,
+      );
+    });
+  }
+
+  Future<void> _guardarIngreso(String categoria) async {
+    final color = _colorSeleccionado[categoria];
+    final cantidad = int.tryParse(_cantidadControllers[categoria]!.text) ?? 0;
+
+    if (color == null || color.isEmpty || cantidad <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Selecciona un color e ingresa una cantidad válida"),
+        ),
+      );
+      return;
+    }
+
+    final fecha = _fechaSeleccionada[categoria] ?? DateTime.now();
+    final registradoPor =
+        FirebaseAuth.instance.currentUser?.email ?? "Desconocido";
+
+    await FirebaseFirestore.instance.collection('ingresos').add({
+      "categoria": categoria,
+      "color": color,
+      "cantidad": cantidad,
+      "fecha": fecha.toString(),
+      "registradoPor": registradoPor,
+      "notas": _notasControllers[categoria]!.text,
+    });
+
+    _cantidadControllers[categoria]!.clear();
+    _notasControllers[categoria]!.clear();
+
+    if (!mounted) return;
+    setState(() {
+      _colorSeleccionado[categoria] = null;
+      _fechaSeleccionada[categoria] = DateTime.now();
+    });
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text("Ingreso registrado en $categoria")));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: darkBg,
+      body: SafeArea(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildSidebar(context),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    _buildHeader(),
+                    const SizedBox(height: 28),
+                    _buildTabsRow(),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      height: 720,
+                      child: TabBarView(
+                        controller: _tabController,
+                        children: categorias
+                            .map(
+                              (categoria) => _buildCategoryContent(categoria),
+                            )
+                            .toList(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSidebar(BuildContext context) {
+    return Container(
+      width: 220,
+      decoration: const BoxDecoration(
+        color: sidebarBg,
+        border: Border(right: BorderSide(color: sidebarBorder, width: 1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: const Color(0xFF8B5CF6)),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.view_in_ar_rounded,
+                    color: Color(0xFFC084FC),
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const Text(
+                  "ECO-REFILL",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.1,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 40),
+          _sidebarItem(
+            Icons.home_outlined,
+            "Inicio",
+            false,
+            () =>
+                Navigator.pushReplacementNamed(context, '/pantallabienvenida'),
+          ),
+          _sidebarItem(
+            Icons.person_outline_rounded,
+            "Mi Perfil",
+            false,
+            () => Navigator.pushReplacementNamed(context, '/perfil'),
+          ),
+          _sidebarItem(
+            Icons.dashboard_outlined,
+            "Dashboard",
+            false,
+            () => Navigator.pushReplacementNamed(context, '/dashboard'),
+          ),
+          _sidebarItem(Icons.add_box_outlined, "Ingreso Plásticos", true, null),
+          _sidebarItem(
+            Icons.recycling_rounded,
+            "Materiales",
+            false,
+            () => Navigator.pushReplacementNamed(context, '/materiales'),
+          ),
+          _sidebarItem(
+            Icons.settings_outlined,
+            "Procesos",
+            false,
+            () => Navigator.pushReplacementNamed(context, '/procesos'),
+          ),
+          _sidebarItem(
+            Icons.groups_outlined,
+            "Usuarios",
+            false,
+            () => Navigator.pushReplacementNamed(context, '/usuarios'),
+          ),
+          _sidebarItem(
+            Icons.person_add_alt_1_outlined,
+            "Registrar Usuario",
+            false,
+            () => Navigator.pushReplacementNamed(context, '/register'),
+          ),
+          _sidebarItem(
+            Icons.task_alt_outlined,
+            "Tareas",
+            false,
+            () => Navigator.pushReplacementNamed(context, '/tareas'),
+          ),
+          const Spacer(),
+          _sidebarItem(
+            Icons.logout_rounded,
+            "Cerrar Sesión",
+            false,
+            _handleLogout,
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  Widget _sidebarItem(
+    IconData icon,
+    String label,
+    bool active,
+    VoidCallback? onTap,
+  ) {
+    final Color background = active
+        ? neonPurple.withOpacity(0.15)
+        : Colors.transparent;
+    final Color foreground = active ? Colors.white : Colors.white70;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Material(
+        color: background,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Icon(icon, color: foreground, size: 20),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: foreground,
+                      fontWeight: active ? FontWeight.bold : FontWeight.normal,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return const Column(
+      children: [
+        Text(
+          "Ingreso de Plásticos",
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 26,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        SizedBox(height: 6),
+        Text(
+          "Registra y gestiona los plásticos que ingresan al sistema",
+          style: TextStyle(color: Colors.white54, fontSize: 14),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTabsRow() {
+    return Wrap(
+      spacing: 16,
+      runSpacing: 12,
+      alignment: WrapAlignment.center,
+      children: List.generate(categorias.length, (index) {
+        final categoria = categorias[index];
+        final active = _tabController.index == index;
+
+        return InkWell(
+          borderRadius: BorderRadius.circular(30),
+          onTap: () => _tabController.animateTo(index),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+            decoration: BoxDecoration(
+              color: active ? neonPurple.withOpacity(0.15) : Colors.transparent,
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(
+                color: active ? neonPurple : Colors.white24,
+                width: 1.4,
+              ),
+              boxShadow: active
+                  ? [
+                      BoxShadow(
+                        color: neonPurple.withOpacity(0.35),
+                        blurRadius: 18,
+                      ),
+                    ]
+                  : [],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _iconForCategoria(categoria),
+                  color: active ? neonPurple : Colors.white54,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  categoria,
+                  style: TextStyle(
+                    color: active ? Colors.white : Colors.white54,
+                    fontWeight: active ? FontWeight.bold : FontWeight.normal,
+                    fontSize: 15,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildCategoryContent(String categoria) {
+    final puedeRegistrar = userRole == "ingreso" || userRole == "jefe";
+
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('ingresos')
           .where('categoria', isEqualTo: categoria)
           .snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
+        final docs = snapshot.data?.docs ?? [];
+
+        final registros = docs.map((doc) {
+          return {"id": doc.id, "data": doc.data() as Map<String, dynamic>};
+        }).toList();
+
+        registros.sort((a, b) {
+          final fechaA =
+              DateTime.tryParse(
+                (a["data"] as Map<String, dynamic>)["fecha"]?.toString() ?? "",
+              ) ??
+              DateTime(2000);
+          final fechaB =
+              DateTime.tryParse(
+                (b["data"] as Map<String, dynamic>)["fecha"]?.toString() ?? "",
+              ) ??
+              DateTime(2000);
+          return fechaB.compareTo(fechaA);
+        });
+
+        int totalEsteMes = 0;
+        int totalMesAnterior = 0;
+        int totalHistorico = 0;
+        final ahora = DateTime.now();
+        final mesAnterior = DateTime(ahora.year, ahora.month - 1);
+
+        for (final registro in registros) {
+          final data = registro["data"] as Map<String, dynamic>;
+          final cantidad = (data["cantidad"] ?? 0) as int;
+          totalHistorico += cantidad;
+
+          final fecha = DateTime.tryParse(data["fecha"]?.toString() ?? "");
+          if (fecha != null) {
+            if (fecha.year == ahora.year && fecha.month == ahora.month) {
+              totalEsteMes += cantidad;
+            } else if (fecha.year == mesAnterior.year &&
+                fecha.month == mesAnterior.month) {
+              totalMesAnterior += cantidad;
+            }
+          }
         }
 
-        final docs = snapshot.data!.docs;
-        if (docs.isEmpty) {
-          return const Center(
-            child: Text("No hay ingresos registrados",
-                style: TextStyle(color: Colors.white)),
-          );
+        double crecimiento;
+        if (totalMesAnterior > 0) {
+          crecimiento =
+              ((totalEsteMes - totalMesAnterior) / totalMesAnterior) * 100;
+        } else {
+          crecimiento = totalEsteMes > 0 ? 100 : 0;
         }
 
-        return ListView(
-          children: docs.map((doc) {
-            // 🔹 Usamos el modelo Ingreso
-            final ingreso = Ingreso.fromMap(
-              doc.data() as Map<String, dynamic>,
-              doc.id,
+        final verTodos = _verTodos[categoria] ?? false;
+        final visibles = verTodos ? registros : registros.take(4).toList();
+
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final isWide = constraints.maxWidth > 900;
+
+            final columnaDerecha = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildStatsRow(
+                  categoria,
+                  totalEsteMes,
+                  crecimiento,
+                  totalHistorico,
+                ),
+                const SizedBox(height: 24),
+                _buildRegistrosCard(
+                  categoria,
+                  visibles,
+                  registros.length,
+                  verTodos,
+                ),
+              ],
             );
 
-            return Card(
-              color: Colors.black.withOpacity(0.8),
-              margin: const EdgeInsets.all(12),
-              child: ListTile(
-                leading: const Icon(Icons.recycling, color: Colors.cyanAccent),
-                title: Text(
-                  "Color: ${ingreso.color}, Cantidad: ${ingreso.cantidad}",
-                  style: const TextStyle(color: Colors.white),
-                ),
-                subtitle: Text(
-                  "Fecha: ${ingreso.fecha}",
-                  style: const TextStyle(color: Colors.cyanAccent),
-                ),
-              ),
-            );
-          }).toList(),
+            if (!puedeRegistrar) {
+              return SingleChildScrollView(child: columnaDerecha);
+            }
+
+            return isWide
+                ? SingleChildScrollView(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(flex: 4, child: _buildFormCard(categoria)),
+                        const SizedBox(width: 24),
+                        Expanded(flex: 5, child: columnaDerecha),
+                      ],
+                    ),
+                  )
+                : SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        _buildFormCard(categoria),
+                        const SizedBox(height: 24),
+                        columnaDerecha,
+                      ],
+                    ),
+                  );
+          },
         );
       },
     );
   }
 
-  void _mostrarFormularioIngreso(String categoria) {
-    final colorController = TextEditingController();
-    final cantidadController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.black,
-        title: Text("Nuevo ingreso en $categoria",
-            style: const TextStyle(color: Colors.cyanAccent)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: colorController,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                labelText: "Color",
-                labelStyle: TextStyle(color: Colors.cyanAccent),
+  Widget _buildFormCard(String categoria) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: neonPurple.withOpacity(0.3)),
+        boxShadow: [
+          BoxShadow(color: neonPurple.withOpacity(0.08), blurRadius: 24),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      neonPurple.withOpacity(0.5),
+                      neonPurple.withOpacity(0.1),
+                    ],
+                  ),
+                ),
+                child: Icon(
+                  _iconForCategoria(categoria),
+                  color: Colors.white,
+                  size: 26,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: cantidadController,
-              keyboardType: TextInputType.number,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                labelText: "Cantidad",
-                labelStyle: TextStyle(color: Colors.cyanAccent),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Registrar ingreso de ${categoria.toLowerCase()}",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      "Completa la información para registrar\nun nuevo ingreso de ${categoria.toLowerCase()}.",
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancelar",
-                style: TextStyle(color: Colors.redAccent)),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () async {
-              final nuevoIngreso = {
-                "categoria": categoria,
-                "color": colorController.text,
-                "cantidad": int.tryParse(cantidadController.text) ?? 0,
-                "fecha": DateTime.now().toString(),
-              };
-
-              // 🔹 Guardar en Firestore
-              await FirebaseFirestore.instance
-                  .collection('ingresos')
-                  .add(nuevoIngreso);
-
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text("Ingreso agregado en $categoria")),
-              );
-            },
-            child: const Text("Guardar"),
+          const SizedBox(height: 22),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: darkBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: neonPurple.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.palette_outlined,
+                  color: neonPurple.withOpacity(0.8),
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: DropdownButton<String>(
+                    value: _colorSeleccionado[categoria],
+                    hint: const Text(
+                      "Color",
+                      style: TextStyle(color: Colors.white54),
+                    ),
+                    dropdownColor: cardBg,
+                    isExpanded: true,
+                    underline: const SizedBox(),
+                    items: _coloresDisponibles
+                        .map(
+                          (color) => DropdownMenuItem(
+                            value: color,
+                            child: Text(
+                              color,
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (valor) {
+                      setState(() {
+                        _colorSeleccionado[categoria] = valor;
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _cantidadControllers[categoria],
+            keyboardType: TextInputType.number,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              labelText: "Cantidad",
+              hintText: "Ej: 3",
+              hintStyle: const TextStyle(color: Colors.white38),
+              labelStyle: const TextStyle(color: Colors.white54),
+              prefixIcon: Icon(Icons.tag, color: neonPurple.withOpacity(0.8)),
+              filled: true,
+              fillColor: darkBg,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: neonPurple.withOpacity(0.3)),
+              ),
+              focusedBorder: const OutlineInputBorder(
+                borderRadius: BorderRadius.all(Radius.circular(12)),
+                borderSide: BorderSide(color: neonPurple),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => _pickFechaHora(categoria),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              decoration: BoxDecoration(
+                color: darkBg,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: neonPurple.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.calendar_today_outlined,
+                    color: neonPurple.withOpacity(0.8),
+                    size: 18,
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    "Fecha y hora",
+                    style: TextStyle(color: Colors.white54, fontSize: 14),
+                  ),
+                  const Spacer(),
+                  Text(
+                    "${_formatDate(_fechaSeleccionada[categoria]!)} "
+                    "${_formatTime(_fechaSeleccionada[categoria]!)}",
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    Icons.edit_calendar_outlined,
+                    color: neonPurple.withOpacity(0.8),
+                    size: 16,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            decoration: BoxDecoration(
+              color: darkBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: neonPurple.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.person_outline,
+                  color: neonPurple.withOpacity(0.8),
+                  size: 18,
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  "Registrado por",
+                  style: TextStyle(color: Colors.white54, fontSize: 14),
+                ),
+                const Spacer(),
+                Text(
+                  FirebaseAuth.instance.currentUser?.email ?? "Usuario actual",
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _notasControllers[categoria],
+            maxLines: 3,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              labelText: "Notas (opcional)",
+              hintText: "Añadir detalles adicionales...",
+              hintStyle: const TextStyle(color: Colors.white38),
+              labelStyle: const TextStyle(color: Colors.white54),
+              alignLabelWithHint: true,
+              prefixIcon: Padding(
+                padding: const EdgeInsets.only(bottom: 40),
+                child: Icon(
+                  Icons.notes_outlined,
+                  color: neonPurple.withOpacity(0.8),
+                ),
+              ),
+              filled: true,
+              fillColor: darkBg,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: neonPurple.withOpacity(0.3)),
+              ),
+              focusedBorder: const OutlineInputBorder(
+                borderRadius: BorderRadius.all(Radius.circular(12)),
+                borderSide: BorderSide(color: neonPurple),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => _guardarIngreso(categoria),
+              icon: const Icon(Icons.add_circle_outline, color: Colors.white),
+              label: const Text("Registrar ingreso"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: neonPurple,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
+  Widget _buildStatsRow(
+    String categoria,
+    int totalEsteMes,
+    double crecimiento,
+    int totalHistorico,
+  ) {
+    final crecimientoTexto =
+        "${crecimiento >= 0 ? '+' : ''}${crecimiento.toStringAsFixed(0)}%";
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F2027),
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        title: const Text("Ingreso de Plásticos",
-            style: TextStyle(color: Colors.cyanAccent)),
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.cyanAccent),
-          onPressed: () {
-            // 🔹 Siempre vuelve a la pantalla de bienvenida
-            Navigator.pushReplacementNamed(context, '/pantallabienvenida');
-          },
+    return Row(
+      children: [
+        Expanded(
+          child: _buildStatCard(
+            icon: _iconForCategoria(categoria),
+            iconColor: neonPurple,
+            value: "$totalEsteMes",
+            label: categoria,
+            sublabel: "Este mes",
+          ),
         ),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.cyanAccent,
-          tabs: const [
-            Tab(text: "Botellas"),
-            Tab(text: "Botellones"),
-            Tab(text: "Canecas"),
-            Tab(text: "Canastas"),
-          ],
+        const SizedBox(width: 16),
+        Expanded(
+          child: _buildStatCard(
+            icon: Icons.trending_up,
+            iconColor: statPink,
+            value: crecimientoTexto,
+            label: "Vs. mes anterior",
+            sublabel: "Crecimiento",
+          ),
         ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: _buildStatCard(
+            icon: Icons.layers_outlined,
+            iconColor: statCyan,
+            value: "$totalHistorico",
+            label: "Total histórico",
+            sublabel: "Todas las fechas",
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatCard({
+    required IconData icon,
+    required Color iconColor,
+    required String value,
+    required String label,
+    required String sublabel,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: iconColor.withOpacity(0.25)),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildIngresoList("Botellas"),
-          _buildIngresoList("Botellones"),
-          _buildIngresoList("Canecas"),
-          _buildIngresoList("Canastas"),
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: iconColor.withOpacity(0.15),
+            ),
+            child: Icon(icon, color: iconColor, size: 20),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+          Text(
+            sublabel,
+            style: const TextStyle(color: Colors.white38, fontSize: 11),
+          ),
         ],
       ),
-      floatingActionButton: (userRole == "ingreso" || userRole == "jefe")
-          ? FloatingActionButton(
-              backgroundColor: Colors.cyanAccent,
-              foregroundColor: Colors.black,
-              onPressed: () {
-                final categoria =
-                    _tabController.index == 0 ? "Botellas" :
-                    _tabController.index == 1 ? "Botellones" :
-                    _tabController.index == 2 ? "Canecas" : "Canastas";
-                _mostrarFormularioIngreso(categoria);
-              },
-              child: const Icon(Icons.add),
+    );
+  }
+
+  Widget _buildRegistrosCard(
+    String categoria,
+    List<Map<String, dynamic>> visibles,
+    int totalRegistros,
+    bool verTodos,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: neonPurple.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.access_time_rounded,
+                color: neonPurple.withOpacity(0.9),
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                "Registros recientes",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              if (totalRegistros > 4)
+                TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _verTodos[categoria] = !verTodos;
+                    });
+                  },
+                  icon: Icon(
+                    verTodos ? Icons.expand_less : Icons.arrow_forward,
+                    color: neonPurple,
+                    size: 16,
+                  ),
+                  label: Text(
+                    verTodos ? "Ver menos" : "Ver todos",
+                    style: const TextStyle(color: neonPurple, fontSize: 12),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (visibles.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: Text(
+                  "No hay ingresos registrados en $categoria",
+                  style: const TextStyle(color: Colors.white54),
+                ),
+              ),
             )
-          : null,
+          else
+            Column(
+              children: visibles.map((registro) {
+                final data = registro["data"] as Map<String, dynamic>;
+                return _buildRegistroItem(data);
+              }).toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRegistroItem(Map<String, dynamic> data) {
+    final color = data["color"]?.toString() ?? "-";
+    final cantidad = data["cantidad"]?.toString() ?? "0";
+    final registradoPor = data["registradoPor"]?.toString() ?? "Desconocido";
+    final fecha = DateTime.tryParse(data["fecha"]?.toString() ?? "");
+    final circleColor = _colorFromName(data["color"]?.toString());
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: darkBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: circleColor.withOpacity(0.18),
+            ),
+            child: Icon(
+              Icons.local_drink_outlined,
+              color: circleColor,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Color: $color",
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  "Registrado por: $registradoPor",
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              const Text(
+                "Cantidad",
+                style: TextStyle(color: Colors.white38, fontSize: 11),
+              ),
+              Text(
+                cantidad,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 24),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                fecha != null ? _formatDate(fecha) : "-",
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+              Text(
+                fecha != null ? _formatTime(fecha) : "-",
+                style: const TextStyle(color: neonPurple, fontSize: 12),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

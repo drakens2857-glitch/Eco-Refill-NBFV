@@ -4,6 +4,8 @@ class Ingreso {
   final String color;
   int cantidad;
   final String fecha;
+  final String? registradoPor;
+  final String? notas;
 
   Ingreso({
     required this.id,
@@ -11,6 +13,8 @@ class Ingreso {
     required this.color,
     required this.cantidad,
     required this.fecha,
+    this.registradoPor,
+    this.notas,
   });
 
   factory Ingreso.fromMap(Map<String, dynamic> data, String id) {
@@ -20,6 +24,8 @@ class Ingreso {
       color: data['color'],
       cantidad: data['cantidad'],
       fecha: data['fecha'],
+      registradoPor: data['registradoPor'],
+      notas: data['notas'],
     );
   }
 
@@ -29,22 +35,24 @@ class Ingreso {
       'color': color,
       'cantidad': cantidad,
       'fecha': fecha,
+      'registradoPor': registradoPor,
+      'notas': notas,
     };
   }
 
-  // 🔹 Opcional: útil para depuración
   @override
   String toString() {
-    return 'Ingreso(id: $id, categoria: $categoria, color: $color, cantidad: $cantidad, fecha: $fecha)';
+    return 'Ingreso(id: $id, categoria: $categoria, color: $color, cantidad: $cantidad, fecha: $fecha, registradoPor: $registradoPor, notas: $notas)';
   }
 
-  // 🔹 Opcional: clonar y modificar fácilmente
   Ingreso copyWith({
     String? id,
     String? categoria,
     String? color,
     int? cantidad,
     String? fecha,
+    String? registradoPor,
+    String? notas,
   }) {
     return Ingreso(
       id: id ?? this.id,
@@ -52,6 +60,8 @@ class Ingreso {
       color: color ?? this.color,
       cantidad: cantidad ?? this.cantidad,
       fecha: fecha ?? this.fecha,
+      registradoPor: registradoPor ?? this.registradoPor,
+      notas: notas ?? this.notas,
     );
   }
 }

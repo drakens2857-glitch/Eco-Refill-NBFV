@@ -87,20 +87,11 @@ class _LoginScreenState extends State<LoginScreen>
       final user = await _authService.login(email, password);
 
       if (user != null) {
+        if (!mounted) return;
 
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => FaceRecognitionScreen(
-              uid: user.uid,
-            ),
-          ),
-        );
-
+        Navigator.pushReplacementNamed(context, '/pantallabienvenida');
       } else {
-
         _showAlert("Error al iniciar sesión. Verifica tus datos.");
-
       }
     } on FirebaseAuthException catch (e) {
       if (e.code == 'user-not-found') {
@@ -116,6 +107,7 @@ class _LoginScreenState extends State<LoginScreen>
       _showAlert("Error inesperado: $e");
     }
   }
+
   Future<void> _startFaceLogin() async {
     final emailController = TextEditingController();
 
@@ -133,10 +125,7 @@ class _LoginScreenState extends State<LoginScreen>
         content: TextField(
           controller: emailController,
           autofocus: true,
-          style: const TextStyle(
-            color: Color(0xFF2C2C2C),
-            fontSize: 15,
-          ),
+          style: const TextStyle(color: Color(0xFF2C2C2C), fontSize: 15),
           decoration: InputDecoration(
             hintText: "Ingresa tu correo",
             hintStyle: TextStyle(color: Colors.grey.shade500),
@@ -175,11 +164,10 @@ class _LoginScreenState extends State<LoginScreen>
 
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => FaceRecognitionScreen(uid: uid),
-      ),
+      MaterialPageRoute(builder: (_) => FaceRecognitionScreen(uid: uid)),
     );
   }
+
   @override
   void dispose() {
     _pulseController.dispose();
@@ -212,7 +200,7 @@ class _LoginScreenState extends State<LoginScreen>
                     filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                     child: Container(
                       constraints: const BoxConstraints(
-                          maxWidth: 760,
+                        maxWidth: 760,
                         maxHeight: 620,
                       ),
                       decoration: BoxDecoration(
