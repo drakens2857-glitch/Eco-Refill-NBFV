@@ -1,4 +1,4 @@
- import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'firebase_options.dart';
@@ -29,33 +29,31 @@ import 'dart:ui_web' as ui_web;
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   await dotenv.load(fileName: "assets/.env");
 
   if (kIsWeb) {
-    ui_web.platformViewRegistry.registerViewFactory(
-      'camera-view',
-      (int viewId) {
-        final video = html.VideoElement()
-          ..autoplay = true
-          ..muted = true
-          ..style.width = '100%'
-          ..style.height = '100%';
+    ui_web.platformViewRegistry.registerViewFactory('camera-view', (
+      int viewId,
+    ) {
+      final video = html.VideoElement()
+        ..autoplay = true
+        ..muted = true
+        ..style.width = '100%'
+        ..style.height = '100%';
 
-        video.setAttribute('playsinline', 'true');
+      video.setAttribute('playsinline', 'true');
 
-        html.window.navigator.mediaDevices
-            ?.getUserMedia({'video': true}).then((stream) {
-          video.srcObject = stream;
-          video.play();
-        });
+      html.window.navigator.mediaDevices?.getUserMedia({'video': true}).then((
+        stream,
+      ) {
+        video.srcObject = stream;
+        video.play();
+      });
 
-        return video;
-      },
-    );
+      return video;
+    });
   }
 
   runApp(const MyApp());
@@ -78,7 +76,6 @@ class MyApp extends StatelessWidget {
       initialRoute: "/home",
 
       routes: {
-
         "/home": (_) => const HomeScreen(),
 
         "/login": (_) => const LoginScreen(),
@@ -99,9 +96,7 @@ class MyApp extends StatelessWidget {
 
         "/procesos": (_) => const ProcesosScreen(),
 
-        "/feed_publico": (_) => const FeedPublicoScreen(
-              desdeLogin: false,
-            ),
+        "/feed_publico": (_) => const FeedPublicoScreen(desdeLogin: false),
 
         "/reportes": (_) => const ReportesScreen(),
 
@@ -109,7 +104,6 @@ class MyApp extends StatelessWidget {
 
         // ❌ ELIMINAR ESTA RUTA
         // "/facerecognition": (_) => const FaceRecognitionScreen(),
-
       },
     );
   }
