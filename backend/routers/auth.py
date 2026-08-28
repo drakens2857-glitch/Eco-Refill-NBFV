@@ -2,6 +2,8 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from firebase_admin import auth, firestore
 from firebase_config import db   # 🔹 Importar cliente Firestore desde firebaseconfig
 from services.face_service import face_service
+from pydantic import BaseModel
+
 
 router = APIRouter()
 
@@ -190,3 +192,39 @@ async def login_with_face(
             status_code=400,
             detail=str(e)
         )
+    
+class UpdateUserRequest(BaseModel):
+    uid: str
+    email: str | None = None
+    password: str | None = None
+
+@router.put("/update_user")
+async def update_user(data: UpdateUserRequest):
+    update_kwargs = {}
+    if data.email:
+        update_kwargs["email"] = data.email
+    if data.password:
+        update_kwargs["password"] = data.password
+
+    if not update_kwargs:
+        raise HTTPException(status_code=400, detail="Nada que actualizar")
+
+    try:
+        auth.update_user(data.uid, **update_kwargs)
+        return {"success": True, "uid": data.uid}
+    except auth.UserNotFoundError:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+@router.delete("/delete_user/{uid}")
+async def delete_user(uid: str):
+    try:
+        auth.delete_user(uid)
+        return {"success": True, "uid": uid}
+    except auth.UserNotFoundError:
+        # Si ya no existe en Auth, no es un error fatal — seguimos
+        # adelante para poder limpiar el documento de Firestore.
+        return {"success": True, "uid": uid, "note": "ya no existía en Auth"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

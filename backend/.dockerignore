@@ -1,0 +1,6 @@
+venv_test/
+__pycache__/
+*.pyc
+uploads/*
+eco-refill-admin.json
+.git/

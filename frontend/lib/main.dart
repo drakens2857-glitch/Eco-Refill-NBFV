@@ -17,6 +17,7 @@ import 'screens/feed_publico.dart';
 import 'screens/home.dart';
 import 'screens/reportes.dart';
 import 'screens/pantallabienvenida.dart';
+import 'screens/pantallanotificaciones.dart';
 
 // 🔹 Ya NO necesitamos importar FaceRecognition aquí
 // import 'screens/facerecognition.dart';
@@ -101,6 +102,8 @@ class MyApp extends StatelessWidget {
         "/reportes": (_) => const ReportesScreen(),
 
         "/pantallabienvenida": (_) => const PantallaBienvenida(),
+
+        "/pantallanotificaciones": (_) => const PantallaNotificaciones(),
 
         // ❌ ELIMINAR ESTA RUTA
         // "/facerecognition": (_) => const FaceRecognitionScreen(),

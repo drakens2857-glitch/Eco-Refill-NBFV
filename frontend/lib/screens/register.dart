@@ -4,6 +4,7 @@ import 'login.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
+import '../services/permisos.dart';
 import 'web_camera_view.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -21,6 +22,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   String? _selectedCargo;
   final AuthService _authService = AuthService();
+  String? userRole;
 
   Uint8List? _capturedFace; // 🔹 foto del rostro
 
@@ -30,12 +32,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
     // 🔹 Registra el elemento <video> HTML antes de que se construya
     // el HtmlElementView. Sin esto la cámara no aparece.
     registerCameraView();
+    _loadUserRole();
+  }
+
+  Future<void> _loadUserRole() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      final role = await _authService.getUserRole(uid);
+      if (mounted) {
+        setState(() {
+          userRole = role;
+        });
+      }
+    }
   }
 
   // Paleta de colores del diseño Neón / Cyberpunk
   static const Color neonPurple = Color(0xFFA855F7);
   static const Color darkBg = Color(0xFF0F0716);
-  static const Color sidebarBg = Color(0xFF13091F);
+  static const Color sidebarBg = Color(0xFF070216);
+  static const Color sidebarBorder = Color(0xFF1E1035);
   static const Color cardBg = Color(0xFF170C28);
   static const Color inputBg = Color(0xFF22113A);
 
@@ -114,23 +130,52 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       if (success) {
         if (!mounted) return;
-        Navigator.pushReplacementNamed(context, '/login');
+
+        // No navegamos a otra pantalla: esto evita "cerrar" la sesión
+        // actual del administrador que está registrando al usuario.
+        // Solo limpiamos el formulario para dejarlo listo para un
+        // nuevo registro.
+        _nameController.clear();
+        _emailController.clear();
+        _passwordController.clear();
+        _phoneController.clear();
+        setState(() {
+          _selectedCargo = null;
+          _capturedFace = null;
+        });
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: neonPurple,
             content: Text("Usuario $name registrado correctamente"),
           ),
         );
+      } else {
+        _showAlert("No se pudo registrar el usuario. Intenta nuevamente.");
       }
     } on FirebaseAuthException catch (e) {
       _showAlert("Error: ${e.message}");
     } catch (e) {
-      _showAlert("Error inesperado: $e");
+      _showAlert(e.toString().replaceFirst("Exception: ", ""));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 700;
+
+    if (isMobile) {
+      return Scaffold(
+        backgroundColor: darkBg,
+        appBar: _buildMobileAppBar(),
+        drawer: Drawer(
+          backgroundColor: sidebarBg,
+          child: SafeArea(child: _buildSidebarContent(context)),
+        ),
+        body: SafeArea(child: _buildMainPanel(context, isMobile: true)),
+      );
+    }
+
     return Scaffold(
       backgroundColor: darkBg,
       body: Row(
@@ -141,12 +186,95 @@ class _RegisterScreenState extends State<RegisterScreen> {
           Container(
             width: 220,
             decoration: const BoxDecoration(
-              color: Color(0xFF070216),
+              color: sidebarBg,
               border: Border(
-                right: BorderSide(color: Color(0xFF1E1035), width: 1),
+                right: BorderSide(color: sidebarBorder, width: 1),
               ),
             ),
-            child: Column(
+            child: _buildSidebarContent(context),
+          ),
+          Container(
+            width: 220,
+            margin: const EdgeInsets.symmetric(
+              horizontal: 18,
+              vertical: 25,
+            ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF05060A),
+                  Color.fromARGB(255, 49, 3, 91),
+                  Color.fromARGB(255, 126, 15, 206),
+                ],
+              ),
+              border: Border.all(
+                color: Color.fromARGB(255, 137, 5, 231),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color.fromARGB(255, 128, 60, 205).withOpacity(.15),
+                  blurRadius: 25,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+          ),
+
+          // -----------------------------------------------------------------
+          // 2. PANEL PRINCIPAL DERECHO (Formulario y Cámara)
+          // -----------------------------------------------------------------
+          Expanded(
+            child: _buildMainPanel(context, isMobile: false),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Barra superior para vista móvil (con botón de menú para el Drawer)
+  PreferredSizeWidget _buildMobileAppBar() {
+    return AppBar(
+      backgroundColor: sidebarBg,
+      elevation: 0,
+      iconTheme: const IconThemeData(color: Colors.white),
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              border: Border.all(color: const Color(0xFF8B5CF6)),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.view_in_ar_rounded,
+              color: Color(0xFFC084FC),
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Text(
+            "ECO-REFILL",
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.1,
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Contenido de la barra lateral, reutilizado tanto en el layout de
+  // escritorio (columna fija) como en el Drawer de la vista móvil.
+  Widget _buildSidebarContent(BuildContext context) {
+    return Column(
               children: [
                 const SizedBox(height: 30),
                 // Logo o Título de App
@@ -188,86 +316,104 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   child: ListView(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     children: [
-                      _buildSidebarItem(
-                        Icons.home_outlined,
-                        "Inicio",
-                        false,
-                        () => Navigator.pushReplacementNamed(
-                          context,
-                          '/pantallabienvenida',
+                      if (Permisos.puedeVer(userRole, 'inicio'))
+                        _buildSidebarItem(
+                          Icons.home_outlined,
+                          "Inicio",
+                          false,
+                          () => Navigator.pushReplacementNamed(
+                            context,
+                            '/pantallabienvenida',
+                          ),
                         ),
-                      ),
 
-                     _buildSidebarItem(
-                        Icons.person_outline_rounded,
-                        "Mi Perfil",
-                        false,
-                        () =>
-                            Navigator.pushReplacementNamed(context, '/perfil'),
-                      ),
-
-                     _buildSidebarItem(
-                        Icons.dashboard_outlined,
-                        "Dashboard",
-                        false,
-                        () => Navigator.pushReplacementNamed(
-                          context,
-                          '/dashboard',
+                      if (Permisos.puedeVer(userRole, 'perfil'))
+                        _buildSidebarItem(
+                          Icons.person_outline_rounded,
+                          "Mi Perfil",
+                          false,
+                          () => Navigator.pushReplacementNamed(
+                              context, '/perfil'),
                         ),
-                      ),
 
-                      _buildSidebarItem(
-                        Icons.add_box_outlined,
-                        "Ingreso Plásticos",
-                        false,
-                        () =>
-                            Navigator.pushReplacementNamed(context, '/ingreso'),
-                      ),
-
-                      _buildSidebarItem(
-                        Icons.recycling_outlined,
-                        "Materiales",
-                        false,
-                        () => Navigator.pushReplacementNamed(
-                          context,
-                          '/materiales',
+                      if (Permisos.puedeVer(userRole, 'dashboard'))
+                        _buildSidebarItem(
+                          Icons.dashboard_outlined,
+                          "Crear Publicaciones",
+                          false,
+                          () => Navigator.pushReplacementNamed(
+                            context,
+                            '/dashboard',
+                          ),
                         ),
-                      ),
 
-                      _buildSidebarItem(
-                        Icons.settings_outlined,
-                        "Procesos",
-                        false,
-                        () => Navigator.pushReplacementNamed(
-                          context,
-                          '/procesos',
+                      if (Permisos.puedeVer(userRole, 'ingreso'))
+                        _buildSidebarItem(
+                          Icons.add_box_outlined,
+                          "Ingreso Plásticos",
+                          false,
+                          () => Navigator.pushReplacementNamed(
+                              context, '/ingreso'),
                         ),
-                      ),
 
-                      _buildSidebarItem(
-                        Icons.groups_outlined,
-                        "Usuarios",
-                        false,
-                        () => Navigator.pushReplacementNamed(
-                          context,
-                          '/usuarios',
+                      if (Permisos.puedeVer(userRole, 'materiales'))
+                        _buildSidebarItem(
+                          Icons.recycling_rounded,
+                          "Materiales",
+                          false,
+                          () => Navigator.pushReplacementNamed(
+                            context,
+                            '/materiales',
+                          ),
                         ),
-                      ),
 
-                      _buildSidebarItem(
-                        Icons.person_add_alt_1_outlined,
-                        "Registrar Usuario",
-                        true,
-                        null,
-                      ),
+                      if (Permisos.puedeVer(userRole, 'procesos'))
+                        _buildSidebarItem(
+                          Icons.settings_outlined,
+                          "Procesos",
+                          false,
+                          () => Navigator.pushReplacementNamed(
+                            context,
+                            '/procesos',
+                          ),
+                        ),
 
-                      _buildSidebarItem(
-                        Icons.task_alt_outlined,
-                        "Tareas",
-                        false,
-                        () =>
-                            Navigator.pushReplacementNamed(context, '/tareas'),
-                      ),
+                      if (Permisos.puedeVer(userRole, 'usuarios'))
+                        _buildSidebarItem(
+                          Icons.groups_outlined,
+                          "Usuarios",
+                          false,
+                          () => Navigator.pushReplacementNamed(
+                            context,
+                            '/usuarios',
+                          ),
+                        ),
+
+                      if (Permisos.puedeVer(userRole, 'register'))
+                        _buildSidebarItem(
+                          Icons.person_add_alt_1_outlined,
+                          "Registrar Usuario",
+                          true,
+                          null,
+                        ),
+
+                      if (Permisos.puedeVer(userRole, 'tareas'))
+                        _buildSidebarItem(
+                          Icons.task_alt_outlined,
+                          "Tareas",
+                          false,
+                          () => Navigator.pushReplacementNamed(
+                              context, '/tareas'),
+                        ),
+
+                      if (Permisos.puedeVer(userRole, 'reportes'))
+                        _buildSidebarItem(
+                          Icons.summarize_outlined,
+                          "Reportes",
+                          false,
+                          () => Navigator.pushReplacementNamed(
+                              context, '/reportes'),
+                        ),
                     ],
                   ),
                 ),
@@ -290,45 +436,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   },
                 ),
               ],
-            ),
-          ),
+            );
+  }
 
-          Container(
-            width: 220,
-            margin: const EdgeInsets.symmetric(
-              horizontal: 18,
-              vertical: 25,
-            ),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(22),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF05060A),
-                  Color.fromARGB(255, 49, 3, 91),
-                  Color.fromARGB(255, 126, 15, 206),
-                ],
-              ),
-              border: Border.all(
-                color: Color.fromARGB(255, 137, 5, 231),
-                width: 1.2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color.fromARGB(255, 128, 60, 205).withOpacity(.15),
-                  blurRadius: 25,
-                  spreadRadius: 2,
-                ),
-              ],
-            ),
-          ),
-
-          // -----------------------------------------------------------------
-          // 2. PANEL PRINCIPAL DERECHO (Formulario y Cámara)
-          // -----------------------------------------------------------------
-          Expanded(
-            child: Container(
+  // Panel principal (formulario + cámara). En móvil ocupa todo el ancho
+  // y usa paddings más pequeños; en escritorio conserva su diseño original.
+  Widget _buildMainPanel(BuildContext context, {required bool isMobile}) {
+    return Container(
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   colors: [darkBg, Color(0xFF230B36)],
@@ -338,9 +452,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               child: Center(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(24),
+                  padding: EdgeInsets.all(isMobile ? 12 : 24),
                   child: Container(
-                    padding: const EdgeInsets.all(32),
+                    padding: EdgeInsets.all(isMobile ? 20 : 32),
                     decoration: BoxDecoration(
                       color: cardBg.withOpacity(0.9),
                       borderRadius: BorderRadius.circular(20),
@@ -470,79 +584,93 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ],
 
                         // Botón de acción principal
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: neonPurple.withOpacity(0.40),
-                                      blurRadius: 15,
-                                    ),
-                                  ],
-                                ),
-                                child: ElevatedButton.icon(
-                                  onPressed: _captureFace,
-                                  icon: const Icon(Icons.camera_alt_outlined),
-                                  label: const Text("Capturar Rostro"),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: neonPurple,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 16,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
+                        Builder(
+                          builder: (context) {
+                            final buttonCapturar = Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: neonPurple.withOpacity(0.40),
+                                    blurRadius: 15,
+                                  ),
+                                ],
+                              ),
+                              child: ElevatedButton.icon(
+                                onPressed: _captureFace,
+                                icon: const Icon(Icons.camera_alt_outlined),
+                                label: const Text("Capturar Rostro"),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: neonPurple,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 16,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
                                 ),
                               ),
-                            ),
+                            );
 
-                            const SizedBox(width: 20),
-
-                            Expanded(
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: neonPurple.withOpacity(0.40),
-                                      blurRadius: 15,
-                                    ),
-                                  ],
-                                ),
-                                child: ElevatedButton.icon(
-                                  onPressed: _register,
-                                  icon: const Icon(Icons.person_add_alt_1),
-                                  label: const Text("Registrar Usuario"),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: neonPurple,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 16,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
+                            final buttonRegistrar = Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: neonPurple.withOpacity(0.40),
+                                    blurRadius: 15,
+                                  ),
+                                ],
+                              ),
+                              child: ElevatedButton.icon(
+                                onPressed: _register,
+                                icon: const Icon(Icons.person_add_alt_1),
+                                label: const Text("Registrar Usuario"),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: neonPurple,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 16,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
+                            );
+
+                            if (isMobile) {
+                              return Column(
+                                children: [
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: buttonCapturar,
+                                  ),
+                                  const SizedBox(height: 14),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: buttonRegistrar,
+                                  ),
+                                ],
+                              );
+                            }
+
+                            return Row(
+                              children: [
+                                Expanded(child: buttonCapturar),
+                                const SizedBox(width: 20),
+                                Expanded(child: buttonRegistrar),
+                              ],
+                            );
+                          },
                         )
                       ],
                     ),
                   ),
                 ),
               ),
-            ),
-          ),
-        ],
-      ),
-    );
+            );
   }
 
   // --- WIDGETS AUXILIARES DE ESTILO ---
@@ -554,26 +682,35 @@ class _RegisterScreenState extends State<RegisterScreen> {
     bool isSelected,
     VoidCallback? onTap,
   ) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        color: isSelected ? const Color(0xFF4C1D95) : Colors.transparent,
+    final Color background = isSelected ? neonPurple : Colors.transparent;
+    final Color foreground = isSelected ? Colors.white : Colors.white70;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Material(
+        color: background,
         borderRadius: BorderRadius.circular(12),
-      ),
-      child: ListTile(
-        dense: true,
-        onTap: onTap,
-        leading: Icon(
-          icon,
-          color: isSelected ? Colors.white : Colors.white54,
-          size: 20,
-        ),
-        title: Text(
-          title,
-          style: TextStyle(
-            color: isSelected ? Colors.white : Colors.white70,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-            fontSize: 14,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Icon(icon, color: foreground, size: 20),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      color: foreground,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

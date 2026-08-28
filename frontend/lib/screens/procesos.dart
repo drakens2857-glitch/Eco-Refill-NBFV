@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_service.dart';
+import '../services/permisos.dart';
 
 class ProcesosScreen extends StatefulWidget {
   const ProcesosScreen({super.key});
@@ -100,6 +101,27 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
     return parsed != null ? _formatFecha(parsed) : raw;
   }
 
+  /// Calcula el progreso (0-100) según la posición de la fase dentro de
+  /// la lista de [fases]. La primera fase equivale a 0% y la última a 100%.
+  int _progresoParaFase(String fase) {
+    final idx = fases.indexOf(fase);
+    if (idx <= 0) return 0;
+    return ((idx / (fases.length - 1)) * 100).round();
+  }
+
+  /// Trae los nombres de los materiales guardados en la colección
+  /// "materiales" (pantalla Materiales) para usarlos en el selector
+  /// de "Proceso" al crear/editar un proceso.
+  Future<List<String>> _fetchMaterialesNombres() async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection("materiales")
+        .get();
+    return snapshot.docs
+        .map((doc) => (doc.data()["nombre"] ?? "").toString())
+        .where((nombre) => nombre.isNotEmpty)
+        .toList();
+  }
+
   InputDecoration _fieldDecoration(String label, {IconData? icon}) {
     return InputDecoration(
       labelText: label,
@@ -164,13 +186,33 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
     );
   }
 
-  void _mostrarFormularioProceso() {
-    final descController = TextEditingController();
+  Future<void> _mostrarFormularioProceso() async {
+    List<String> materiales;
+    try {
+      materiales = await _fetchMaterialesNombres();
+    } catch (_) {
+      materiales = [];
+    }
+
+    if (!mounted) return;
+
+    if (materiales.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "No hay materiales guardados. Crea uno primero en la sección Materiales.",
+          ),
+        ),
+      );
+      return;
+    }
+
     final tipoController = TextEditingController();
     final cantidadController = TextEditingController();
+    String procesoSeleccionado = materiales.first;
     String faseSeleccionada = fases.first;
-    double progresoInicial = 0;
 
+    if (!context.mounted) return;
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -188,13 +230,14 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(
-                  controller: descController,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: _fieldDecoration(
-                    "Descripción",
-                    icon: Icons.description_outlined,
-                  ),
+                _buildDropdownField(
+                  label: "Proceso",
+                  icon: Icons.recycling_outlined,
+                  value: procesoSeleccionado,
+                  options: materiales,
+                  onChanged: (nuevo) {
+                    setDialogState(() => procesoSeleccionado = nuevo!);
+                  },
                 ),
                 const SizedBox(height: 12),
                 TextField(
@@ -225,24 +268,14 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
                     icon: Icons.tag,
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    "Progreso inicial: ${progresoInicial.round()}%",
-                    style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    "El progreso avanza automáticamente según la fase "
+                    "(inicia en ${_progresoParaFase(faseSeleccionada)}%).",
+                    style: const TextStyle(color: Colors.white38, fontSize: 12),
                   ),
-                ),
-                Slider(
-                  value: progresoInicial,
-                  min: 0,
-                  max: 100,
-                  divisions: 20,
-                  activeColor: neonPurple,
-                  inactiveColor: neonPurple.withOpacity(0.2),
-                  onChanged: (valor) {
-                    setDialogState(() => progresoInicial = valor);
-                  },
                 ),
               ],
             ),
@@ -269,12 +302,12 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
                   "usuario":
                       FirebaseAuth.instance.currentUser?.email ??
                       "Usuario actual",
-                  "descripcion": descController.text,
+                  "descripcion": procesoSeleccionado,
                   "tipo": tipoController.text.isEmpty
                       ? "General"
                       : tipoController.text,
                   "fase": faseSeleccionada,
-                  "progreso": progresoInicial.round(),
+                  "progreso": _progresoParaFase(faseSeleccionada),
                   "cantidad": int.tryParse(cantidadController.text) ?? 0,
                   "fecha": DateTime.now().toString(),
                 });
@@ -292,8 +325,90 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
     );
   }
 
-  Future<void> _actualizarProgreso(String id, Map<String, dynamic> data) async {
-    double progreso = (data["progreso"] ?? 0).toDouble();
+  /// Dropdown especial para avanzar de fase: las fases anteriores a la
+  /// actual quedan bloqueadas (no seleccionables) porque ya se superaron,
+  /// y solo se puede avanzar hacia adelante en la secuencia.
+  Widget _buildFaseAvanceDropdown({
+    required String faseActual,
+    required String faseSeleccionada,
+    required void Function(String?) onChanged,
+  }) {
+    final indiceActual = fases.contains(faseActual)
+        ? fases.indexOf(faseActual)
+        : 0;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: darkBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: neonPurple.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.timeline_outlined,
+            color: neonPurple.withOpacity(0.8),
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: DropdownButton<String>(
+              value: faseSeleccionada,
+              isExpanded: true,
+              underline: const SizedBox(),
+              dropdownColor: cardBg,
+              items: fases.asMap().entries.map((entry) {
+                final index = entry.key;
+                final fase = entry.value;
+                final bloqueada = index < indiceActual;
+                return DropdownMenuItem(
+                  value: fase,
+                  enabled: !bloqueada,
+                  child: Row(
+                    children: [
+                      if (bloqueada)
+                        const Icon(
+                          Icons.lock_outline,
+                          size: 14,
+                          color: Colors.white24,
+                        )
+                      else if (index == indiceActual)
+                        Icon(
+                          Icons.play_circle_outline,
+                          size: 14,
+                          color: statBlue,
+                        )
+                      else
+                        Icon(
+                          Icons.radio_button_unchecked,
+                          size: 14,
+                          color: Colors.white38,
+                        ),
+                      const SizedBox(width: 8),
+                      Text(
+                        fase,
+                        style: TextStyle(
+                          color: bloqueada ? Colors.white24 : Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+              onChanged: onChanged,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _cambiarFase(String id, Map<String, dynamic> data) async {
+    final faseActual = fases.contains(data["fase"])
+        ? data["fase"] as String
+        : fases.first;
+    String faseSeleccionada = faseActual;
 
     await showDialog(
       context: context,
@@ -305,29 +420,24 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
             side: BorderSide(color: neonPurple.withOpacity(0.3)),
           ),
           title: const Text(
-            "Actualizar progreso",
+            "Avanzar fase",
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                "${progreso.round()}%",
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                ),
+              const Text(
+                "Las fases ya superadas quedan bloqueadas. Solo puedes "
+                "avanzar hacia la siguiente fase.",
+                style: TextStyle(color: Colors.white54, fontSize: 12),
               ),
-              Slider(
-                value: progreso,
-                min: 0,
-                max: 100,
-                divisions: 20,
-                activeColor: neonPurple,
-                inactiveColor: neonPurple.withOpacity(0.2),
-                onChanged: (valor) {
-                  setDialogState(() => progreso = valor);
+              const SizedBox(height: 12),
+              _buildFaseAvanceDropdown(
+                faseActual: faseActual,
+                faseSeleccionada: faseSeleccionada,
+                onChanged: (nuevo) {
+                  setDialogState(() => faseSeleccionada = nuevo!);
                 },
               ),
             ],
@@ -349,10 +459,27 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
                 ),
               ),
               onPressed: () async {
-                await FirebaseFirestore.instance
-                    .collection("procesos")
-                    .doc(id)
-                    .update({"progreso": progreso.round()});
+                final nuevoProgreso = _progresoParaFase(faseSeleccionada);
+                if (faseSeleccionada == "Proceso finalizado") {
+                  await FirebaseFirestore.instance.collection("historial").add({
+                    ...data,
+                    "fase": faseSeleccionada,
+                    "progreso": 100,
+                    "fechaFinalizado": DateTime.now().toString(),
+                  });
+                  await FirebaseFirestore.instance
+                      .collection("procesos")
+                      .doc(id)
+                      .delete();
+                } else {
+                  await FirebaseFirestore.instance
+                      .collection("procesos")
+                      .doc(id)
+                      .update({
+                        "fase": faseSeleccionada,
+                        "progreso": nuevoProgreso,
+                      });
+                }
                 if (!context.mounted) return;
                 Navigator.pop(context);
               },
@@ -364,11 +491,44 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
     );
   }
 
-  Future<void> _cambiarFase(String id, Map<String, dynamic> data) async {
-    String faseSeleccionada = fases.contains(data["fase"])
-        ? data["fase"]
-        : fases.first;
+  /// Edita datos del proceso (tipo, cantidad, proceso/material) sin tocar
+  /// la fase ni el avance, que solo cambian con "Avanzar fase".
+  Future<void> _editarProceso(String id, Map<String, dynamic> data) async {
+    List<String> materiales;
+    try {
+      materiales = await _fetchMaterialesNombres();
+    } catch (_) {
+      materiales = [];
+    }
 
+    final descripcionActual = (data["descripcion"] ?? "").toString();
+    if (materiales.isNotEmpty && !materiales.contains(descripcionActual)) {
+      materiales = [descripcionActual, ...materiales];
+    } else if (materiales.isEmpty && descripcionActual.isNotEmpty) {
+      materiales = [descripcionActual];
+    }
+
+    if (materiales.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("No hay materiales guardados para asignar."),
+        ),
+      );
+      return;
+    }
+
+    final tipoController = TextEditingController(
+      text: (data["tipo"] ?? "").toString(),
+    );
+    final cantidadController = TextEditingController(
+      text: (data["cantidad"] ?? "").toString(),
+    );
+    String procesoSeleccionado = materiales.contains(descripcionActual)
+        ? descripcionActual
+        : materiales.first;
+
+    if (!context.mounted) return;
     await showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -379,17 +539,43 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
             side: BorderSide(color: neonPurple.withOpacity(0.3)),
           ),
           title: const Text(
-            "Cambiar fase",
+            "Editar Proceso",
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
-          content: _buildDropdownField(
-            label: "Fase",
-            icon: Icons.timeline_outlined,
-            value: faseSeleccionada,
-            options: fases,
-            onChanged: (nuevo) {
-              setDialogState(() => faseSeleccionada = nuevo!);
-            },
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildDropdownField(
+                  label: "Proceso",
+                  icon: Icons.recycling_outlined,
+                  value: procesoSeleccionado,
+                  options: materiales,
+                  onChanged: (nuevo) {
+                    setDialogState(() => procesoSeleccionado = nuevo!);
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: tipoController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: _fieldDecoration(
+                    "Tipo (ej: Limpieza, Prueba, Carga)",
+                    icon: Icons.label_outline,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: cantidadController,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: _fieldDecoration(
+                    "Cantidad a procesar",
+                    icon: Icons.tag,
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -399,7 +585,7 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
                 style: TextStyle(color: Colors.redAccent),
               ),
             ),
-            ElevatedButton(
+            ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 backgroundColor: neonPurple,
                 foregroundColor: Colors.white,
@@ -407,27 +593,27 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
+              icon: const Icon(Icons.save_outlined, size: 18),
               onPressed: () async {
-                if (faseSeleccionada == "Proceso finalizado") {
-                  await FirebaseFirestore.instance.collection("historial").add({
-                    ...data,
-                    "fase": faseSeleccionada,
-                    "fechaFinalizado": DateTime.now().toString(),
-                  });
-                  await FirebaseFirestore.instance
-                      .collection("procesos")
-                      .doc(id)
-                      .delete();
-                } else {
-                  await FirebaseFirestore.instance
-                      .collection("procesos")
-                      .doc(id)
-                      .update({"fase": faseSeleccionada});
-                }
+                await FirebaseFirestore.instance
+                    .collection("procesos")
+                    .doc(id)
+                    .update({
+                      "descripcion": procesoSeleccionado,
+                      "tipo": tipoController.text.isEmpty
+                          ? "General"
+                          : tipoController.text,
+                      "cantidad": int.tryParse(cantidadController.text) ?? 0,
+                    });
                 if (!context.mounted) return;
                 Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Proceso actualizado correctamente"),
+                  ),
+                );
               },
-              child: const Text("Guardar"),
+              label: const Text("Guardar"),
             ),
           ],
         ),
@@ -541,6 +727,60 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 700;
+
+    final mainContent = SingleChildScrollView(
+      padding: EdgeInsets.all(isMobile ? 16 : 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const Text(
+            "Procesos",
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 20),
+          if (userRole == "proceso" || userRole == "jefe")
+            ElevatedButton.icon(
+              onPressed: _mostrarFormularioProceso,
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text("Crear Proceso"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: neonPurple,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 16,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  side: BorderSide(
+                    color: neonPurple.withOpacity(0.6),
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(height: 28),
+          _buildPanelesRow(),
+        ],
+      ),
+    );
+
+    if (isMobile) {
+      return Scaffold(
+        backgroundColor: darkBg,
+        appBar: _buildMobileAppBar(),
+        drawer: Drawer(
+          backgroundColor: sidebarBg,
+          child: SafeArea(child: _buildSidebar(context, isDrawer: true)),
+        ),
+        body: SafeArea(child: mainContent),
+      );
+    }
+
     return Scaffold(
       backgroundColor: darkBg,
       body: SafeArea(
@@ -548,59 +788,57 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _buildSidebar(context),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const Text(
-                      "Procesos",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    if (userRole == "proceso" || userRole == "jefe")
-                      ElevatedButton.icon(
-                        onPressed: _mostrarFormularioProceso,
-                        icon: const Icon(Icons.add, color: Colors.white),
-                        label: const Text("Crear Proceso"),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: neonPurple,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 16,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30),
-                            side: BorderSide(
-                              color: neonPurple.withOpacity(0.6),
-                            ),
-                          ),
-                        ),
-                      ),
-                    const SizedBox(height: 28),
-                    _buildPanelesRow(),
-                  ],
-                ),
-              ),
-            ),
+            Expanded(child: mainContent),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildSidebar(BuildContext context) {
+  // Barra superior para la vista móvil, con el botón para abrir el Drawer.
+  PreferredSizeWidget _buildMobileAppBar() {
+    return AppBar(
+      backgroundColor: sidebarBg,
+      elevation: 0,
+      iconTheme: const IconThemeData(color: Colors.white),
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              border: Border.all(color: const Color(0xFF8B5CF6)),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.view_in_ar_rounded,
+              color: Color(0xFFC084FC),
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Text(
+            "ECO-REFILL",
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.1,
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSidebar(BuildContext context, {bool isDrawer = false}) {
     return Container(
-      width: 220,
-      decoration: const BoxDecoration(
+      width: isDrawer ? null : 220,
+      decoration: BoxDecoration(
         color: sidebarBg,
-        border: Border(right: BorderSide(color: sidebarBorder, width: 1)),
+        border: isDrawer
+            ? null
+            : const Border(right: BorderSide(color: sidebarBorder, width: 1)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -636,56 +874,77 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
             ),
           ),
           const SizedBox(height: 40),
-          _sidebarItem(
-            Icons.home_outlined,
-            "Inicio",
-            false,
-            () =>
-                Navigator.pushReplacementNamed(context, '/pantallabienvenida'),
-          ),
-          _sidebarItem(
-            Icons.person_outline_rounded,
-            "Mi Perfil",
-            false,
-            () => Navigator.pushReplacementNamed(context, '/perfil'),
-          ),
-          _sidebarItem(
-            Icons.dashboard_outlined,
-            "Dashboard",
-            false,
-            () => Navigator.pushReplacementNamed(context, '/dashboard'),
-          ),
-          _sidebarItem(
-            Icons.add_box_outlined,
-            "Ingreso Plásticos",
-            false,
-            () => Navigator.pushReplacementNamed(context, '/ingreso'),
-          ),
-          _sidebarItem(
-            Icons.recycling_rounded,
-            "Materiales",
-            false,
-            () => Navigator.pushReplacementNamed(context, '/materiales'),
-          ),
-          _sidebarItem(Icons.settings_outlined, "Procesos", true, null),
-          _sidebarItem(
-            Icons.groups_outlined,
-            "Usuarios",
-            false,
-            () => Navigator.pushReplacementNamed(context, '/usuarios'),
-          ),
-          _sidebarItem(
-            Icons.person_add_alt_1_outlined,
-            "Registrar Usuario",
-            false,
-            () => Navigator.pushReplacementNamed(context, '/register'),
-          ),
-          _sidebarItem(
-            Icons.task_alt_outlined,
-            "Tareas",
-            false,
-            () => Navigator.pushReplacementNamed(context, '/tareas'),
-          ),
+          if (Permisos.puedeVer(userRole, 'inicio'))
+            _sidebarItem(
+              Icons.home_outlined,
+              "Inicio",
+              false,
+              () => Navigator.pushReplacementNamed(
+                  context, '/pantallabienvenida'),
+            ),
+          if (Permisos.puedeVer(userRole, 'perfil'))
+            _sidebarItem(
+              Icons.person_outline_rounded,
+              "Mi Perfil",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/perfil'),
+            ),
+          if (Permisos.puedeVer(userRole, 'dashboard'))
+            _sidebarItem(
+              Icons.dashboard_outlined,
+              "Crear Publicaciones",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/dashboard'),
+            ),
+          if (Permisos.puedeVer(userRole, 'ingreso'))
+            _sidebarItem(
+              Icons.add_box_outlined,
+              "Ingreso Plásticos",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/ingreso'),
+            ),
+          if (Permisos.puedeVer(userRole, 'materiales'))
+            _sidebarItem(
+              Icons.recycling_rounded,
+              "Materiales",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/materiales'),
+            ),
+          if (Permisos.puedeVer(userRole, 'procesos'))
+            _sidebarItem(
+              Icons.settings_outlined,
+              "Procesos",
+              true,
+              null,
+            ),
+          if (Permisos.puedeVer(userRole, 'usuarios'))
+            _sidebarItem(
+              Icons.groups_outlined,
+              "Usuarios",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/usuarios'),
+            ),
+          if (Permisos.puedeVer(userRole, 'register'))
+            _sidebarItem(
+              Icons.person_add_alt_1_outlined,
+              "Registrar Usuario",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/register'),
+            ),
+          if (Permisos.puedeVer(userRole, 'tareas'))
+            _sidebarItem(
+              Icons.task_alt_outlined,
+              "Tareas",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/tareas'),
+            ),
+          if (Permisos.puedeVer(userRole, 'reportes'))
+            _sidebarItem(
+              Icons.summarize_outlined,
+              "Reportes",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/reportes'),
+            ),
           const Spacer(),
           _sidebarItem(
             Icons.logout_rounded,
@@ -705,9 +964,7 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
     bool active,
     VoidCallback? onTap,
   ) {
-    final Color background = active
-        ? neonPurple.withOpacity(0.15)
-        : Colors.transparent;
+    final Color background = active ? neonPurple : Colors.transparent;
     final Color foreground = active ? Colors.white : Colors.white70;
 
     return Padding(
@@ -974,22 +1231,22 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
                         size: 18,
                       ),
                       onSelected: (value) {
-                        if (value == "progreso") {
-                          _actualizarProgreso(id, data);
-                        } else if (value == "fase") {
+                        if (value == "fase") {
                           _cambiarFase(id, data);
+                        } else if (value == "editar") {
+                          _editarProceso(id, data);
                         } else if (value == "eliminar") {
                           _eliminarProceso(id);
                         }
                       },
                       itemBuilder: (context) => const [
                         PopupMenuItem(
-                          value: "progreso",
-                          child: Text("Actualizar progreso"),
+                          value: "fase",
+                          child: Text("Avanzar fase"),
                         ),
                         PopupMenuItem(
-                          value: "fase",
-                          child: Text("Cambiar fase"),
+                          value: "editar",
+                          child: Text("Editar"),
                         ),
                         PopupMenuItem(
                           value: "eliminar",
@@ -1108,10 +1365,64 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 10),
+                _buildFasesTimeline((data["fase"] ?? fases.first).toString()),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Fila con los pasos del proceso: los ya superados se ven bloqueados
+  /// (candado), el actual resaltado y los que faltan en gris.
+  Widget _buildFasesTimeline(String faseActual) {
+    final indiceActual = fases.contains(faseActual)
+        ? fases.indexOf(faseActual)
+        : 0;
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: fases.asMap().entries.map((entry) {
+          final index = entry.key;
+          final fase = entry.value;
+          final completada = index < indiceActual;
+          final esActual = index == indiceActual;
+
+          final Color color = completada
+              ? statGreen
+              : esActual
+              ? neonPurple
+              : Colors.white24;
+          final IconData icon = completada
+              ? Icons.lock_outline
+              : esActual
+              ? Icons.play_circle_fill
+              : Icons.radio_button_unchecked;
+
+          return Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: Tooltip(
+              message: fase,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(esActual ? 0.18 : 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: esActual
+                      ? Border.all(color: neonPurple.withOpacity(0.6))
+                      : null,
+                ),
+                child: Icon(icon, size: 13, color: color),
+              ),
+            ),
+          );
+        }).toList(),
       ),
     );
   }
@@ -1162,7 +1473,7 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
                   ],
                 ),
               ),
-              PopupMenuButton<String?>(
+              PopupMenuButton<String>(
                 color: cardBg,
                 icon: Container(
                   width: 36,
@@ -1179,10 +1490,14 @@ class _ProcesosScreenState extends State<ProcesosScreen> {
                   ),
                 ),
                 onSelected: (valor) => setState(() {
-                  _filtroTipoHistorial = valor;
+                  // "todos" es un valor centinela (no null) que representa
+                  // "sin filtro". PopupMenuButton no dispara onSelected
+                  // cuando el value de un item es null, así que no podemos
+                  // usar null directamente.
+                  _filtroTipoHistorial = valor == "todos" ? null : valor;
                 }),
                 itemBuilder: (context) => const [
-                  PopupMenuItem(value: null, child: Text("Todos los tipos")),
+                  PopupMenuItem(value: "todos", child: Text("Todos los tipos")),
                   PopupMenuItem(value: "Limpieza", child: Text("Limpieza")),
                   PopupMenuItem(value: "Prueba", child: Text("Prueba")),
                   PopupMenuItem(value: "Carga", child: Text("Carga")),

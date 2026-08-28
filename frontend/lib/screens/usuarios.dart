@@ -1,5 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/auth_service.dart';
+import '../services/permisos.dart';
 
 class UsuariosScreen extends StatefulWidget {
   const UsuariosScreen({super.key});
@@ -9,13 +14,14 @@ class UsuariosScreen extends StatefulWidget {
 }
 
 class _UsuariosScreenState extends State<UsuariosScreen> {
-  static const Color backgroundColor = Color(0xFF0B0B16);
-  static const Color sidebarBg = Color(0xFF0D0D1A);
-  static const Color sidebarBorder = Color(0xFF252238);
+  static const Color backgroundColor = Color(0xFF0F0716);
+  static const Color sidebarBg = Color(0xFF070216);
+  static const Color sidebarBorder = Color(0xFF1E1035);
   static const Color panelColor = Color(0xFF121225);
   static const Color secondaryPanelColor = Color(0xFF17172C);
   static const Color purple = Color(0xFF8B5CF6);
   static const Color lightPurple = Color(0xFFC084FC);
+  static const Color neonPurple = Color(0xFFA855F7);
   static const Color cyan = Color(0xFF34D7FF);
 
   String _searchText = "";
@@ -28,20 +34,77 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
 
   final List<String> _states = ["Todos", "Activo", "Inactivo"];
 
+  final AuthService _authService = AuthService();
+  String? userRole;
+  final TextEditingController _searchController = TextEditingController();
+
+  // 🔹 Antes el StreamBuilder de más abajo llamaba directamente a
+  // `.snapshots()` dentro del build(). Cada letra escrita en el buscador
+  // hacía setState(), lo que reconstruía el widget y creaba un stream
+  // NUEVO cada vez. El StreamBuilder trataba eso como una fuente de datos
+  // distinta: se reseteaba a "cargando" por un instante (el "micro
+  // recargo"), destruía el campo de texto y perdía el foco/teclado a
+  // cada tecla. Ahora el stream se crea una sola vez y se reutiliza.
+  late final Stream<QuerySnapshot> _usersStream =
+      FirebaseFirestore.instance.collection("users").snapshots();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserRole();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadUserRole() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      final role = await _authService.getUserRole(uid);
+      if (mounted) {
+        setState(() {
+          userRole = role;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final esMovil = MediaQuery.of(context).size.width < 900;
+
     return Scaffold(
       backgroundColor: backgroundColor,
+      drawer: esMovil
+          ? Drawer(
+              width: 260,
+              backgroundColor: sidebarBg,
+              child: _buildSidebar(context),
+            )
+          : null,
+      appBar: esMovil
+          ? AppBar(
+              backgroundColor: sidebarBg,
+              iconTheme: const IconThemeData(color: Colors.white),
+              title: const Text(
+                "Usuarios",
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            )
+          : null,
       body: SafeArea(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildSidebar(context),
+            if (!esMovil) SizedBox(width: 220, child: _buildSidebar(context)),
             Expanded(
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
                 child: Padding(
-                  padding: const EdgeInsets.all(18),
+                  padding: EdgeInsets.all(esMovil ? 14 : 18),
                   child: _buildMainContent(context),
                 ),
               ),
@@ -52,12 +115,8 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
     );
   }
 
-  Widget _buildSidebar(BuildContext context) {
+   Widget _buildSidebar(BuildContext context) {
     return Container(
-      width: 220,
-      constraints: BoxConstraints(
-        minHeight: MediaQuery.of(context).size.height,
-      ),
       decoration: const BoxDecoration(
         color: sidebarBg,
         border: Border(right: BorderSide(color: sidebarBorder, width: 1)),
@@ -73,12 +132,12 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
                 Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    border: Border.all(color: purple),
+                    border: Border.all(color: const Color(0xFF8B5CF6)),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Icon(
                     Icons.view_in_ar_rounded,
-                    color: lightPurple,
+                    color: Color(0xFFC084FC),
                     size: 20,
                   ),
                 ),
@@ -96,57 +155,78 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
             ),
           ),
           const SizedBox(height: 40),
-          _sidebarItem(
-            Icons.home_outlined,
-            "Inicio",
-            false,
-            () =>
-                Navigator.pushReplacementNamed(context, '/pantallabienvenida'),
-          ),
-          _sidebarItem(
-            Icons.person_outline_rounded,
-            "Mi Perfil",
-            false,
-            () => Navigator.pushReplacementNamed(context, '/perfil'),
-          ),
-          _sidebarItem(
-            Icons.dashboard_outlined,
-            "Dashboard",
-            false,
-            () => Navigator.pushReplacementNamed(context, '/dashboard'),
-          ),
-          _sidebarItem(
-            Icons.add_box_outlined,
-            "Ingreso Plásticos",
-            false,
-            () => Navigator.pushReplacementNamed(context, '/ingreso'),
-          ),
-          _sidebarItem(
-            Icons.recycling_rounded,
-            "Materiales",
-            false,
-            () => Navigator.pushReplacementNamed(context, '/materiales'),
-          ),
-          _sidebarItem(
-            Icons.settings_outlined,
-            "Procesos",
-            false,
-            () => Navigator.pushReplacementNamed(context, '/procesos'),
-          ),
-          _sidebarItem(Icons.groups_outlined, "Usuarios", true, null),
-          _sidebarItem(
-            Icons.person_add_alt_1_outlined,
-            "Registrar Usuario",
-            false,
-            () => Navigator.pushReplacementNamed(context, '/register'),
-          ),
-          _sidebarItem(
-            Icons.task_alt_outlined,
-            "Tareas",
-            false,
-            () => Navigator.pushReplacementNamed(context, '/tareas'),
-          ),
-          const SizedBox(height: 70),
+          if (Permisos.puedeVer(userRole, 'inicio'))
+            _sidebarItem(
+              Icons.home_outlined,
+              "Inicio",
+              false,
+              () => Navigator.pushReplacementNamed(
+                  context, '/pantallabienvenida'),
+            ),
+          if (Permisos.puedeVer(userRole, 'perfil'))
+            _sidebarItem(
+              Icons.person_outline_rounded,
+              "Mi Perfil",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/perfil'),
+            ),
+          if (Permisos.puedeVer(userRole, 'dashboard'))
+            _sidebarItem(
+              Icons.dashboard_outlined,
+              "Crear Publicaciones",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/dashboard'),
+            ),
+          if (Permisos.puedeVer(userRole, 'ingreso'))
+            _sidebarItem(
+              Icons.add_box_outlined,
+              "Ingreso Plásticos",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/ingreso'),
+            ),
+          if (Permisos.puedeVer(userRole, 'materiales'))
+            _sidebarItem(
+              Icons.recycling_rounded,
+              "Materiales",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/materiales'),
+            ),
+          if (Permisos.puedeVer(userRole, 'procesos'))
+            _sidebarItem(
+              Icons.settings_outlined,
+              "Procesos",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/procesos'),
+            ),
+          if (Permisos.puedeVer(userRole, 'usuarios'))
+            _sidebarItem(
+              Icons.groups_outlined,
+              "Usuarios",
+              true,
+              null,
+            ),
+          if (Permisos.puedeVer(userRole, 'register'))
+            _sidebarItem(
+              Icons.person_add_alt_1_outlined,
+              "Registrar Usuario",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/register'),
+            ),
+          if (Permisos.puedeVer(userRole, 'tareas'))
+            _sidebarItem(
+              Icons.task_alt_outlined,
+              "Tareas",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/tareas'),
+            ),
+          if (Permisos.puedeVer(userRole, 'reportes'))
+            _sidebarItem(
+              Icons.summarize_outlined,
+              "Reportes",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/reportes'),
+            ),
+          const Spacer(),
           _sidebarItem(
             Icons.logout_rounded,
             "Cerrar Sesión",
@@ -165,40 +245,35 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
     bool selected,
     VoidCallback? onTap,
   ) {
+    final Color background = selected ? neonPurple : Colors.transparent;
+    final Color foreground = selected ? Colors.white : Colors.white70;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-      child: InkWell(
-        onTap: onTap,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Material(
+        color: background,
         borderRadius: BorderRadius.circular(12),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          decoration: BoxDecoration(
-            color: selected ? purple.withOpacity(0.18) : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: selected ? purple.withOpacity(0.45) : Colors.transparent,
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                icon,
-                size: 20,
-                color: selected ? lightPurple : Colors.white70,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    color: selected ? Colors.white : Colors.white70,
-                    fontSize: 13,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Icon(icon, color: foreground, size: 20),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      color: foreground,
+                      fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -211,7 +286,7 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
 
   Widget _buildMainContent(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection("users").snapshots(),
+      stream: _usersStream,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return const Center(
@@ -358,7 +433,7 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "Usuarios y Reportes",
+                  "Usuarios",
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 26,
@@ -367,7 +442,7 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
                 ),
                 SizedBox(height: 6),
                 Text(
-                  "Gestiona usuarios del sistema y genera reportes",
+                  "Gestiona los usuarios del sistema",
                   style: TextStyle(color: Colors.white70, fontSize: 14),
                 ),
               ],
@@ -585,6 +660,7 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
 
   Widget _searchField() {
     return TextField(
+      controller: _searchController,
       onChanged: (value) {
         setState(() {
           _searchText = value.trim().toLowerCase();
@@ -901,10 +977,10 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
+          const Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -922,16 +998,6 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
                       style: TextStyle(color: Colors.white70),
                     ),
                   ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              TextButton(
-                onPressed: () {
-                  Navigator.pushReplacementNamed(context, '/reportes');
-                },
-                child: const Text(
-                  "Ver reportes",
-                  style: TextStyle(color: cyan),
                 ),
               ),
             ],
@@ -969,38 +1035,6 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
                   "Usuarios inactivos",
                   "$inactiveUsers",
                   Colors.orangeAccent,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: secondaryPanelColor,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Colors.white.withOpacity(0.08)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  "Acciones rápidas",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _quickAction(
-                  icon: Icons.bar_chart_outlined,
-                  title: "Reportes",
-                  subtitle: "Consultar reportes",
-                  onTap: () {
-                    Navigator.pushReplacementNamed(context, '/reportes');
-                  },
                 ),
               ],
             ),
@@ -1219,6 +1253,8 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
     final phoneController = TextEditingController(
       text: _value(data["phone"], fallback: ""),
     );
+    final passwordController = TextEditingController();
+    final originalEmail = _value(data["email"], fallback: "");
 
     String selectedRole = _roles.contains(data["cargo"])
         ? data["cargo"]
@@ -1262,6 +1298,23 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
                   controller: phoneController,
                   label: "Teléfono",
                   icon: Icons.phone_outlined,
+                ),
+                const SizedBox(height: 12),
+                _dialogTextField(
+                  controller: passwordController,
+                  label: "Nueva contraseña",
+                  icon: Icons.lock_outline,
+                  obscure: true,
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, left: 4),
+                  child: Text(
+                    "Déjala vacía si no quieres cambiar la contraseña.",
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.5),
+                      fontSize: 11,
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
@@ -1333,13 +1386,46 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
             ),
             ElevatedButton(
               onPressed: () async {
+                final newEmail = emailController.text.trim();
+                final newPassword = passwordController.text.trim();
+                final emailChanged = newEmail != originalEmail;
+
                 try {
+                  // El correo y la contraseña viven en Firebase Auth, no
+                  // en Firestore, así que si cambiaron hay que actualizarlos
+                  // primero vía el backend (Admin SDK). Esto falla si el
+                  // endpoint aún no existe en el servidor.
+                  if (emailChanged || newPassword.isNotEmpty) {
+                    final uri = Uri.parse(
+                      "https://eco-refill-backend-992396324099.us-central1.run.app/api/auth/update_user",
+                    );
+                    final body = <String, dynamic>{"uid": documentId};
+                    if (emailChanged) body["email"] = newEmail;
+                    if (newPassword.isNotEmpty) body["password"] = newPassword;
+
+                    final response = await http.put(
+                      uri,
+                      headers: {"Content-Type": "application/json"},
+                      body: json.encode(body),
+                    );
+
+                    if (response.statusCode != 200) {
+                      String detail = response.body;
+                      try {
+                        detail =
+                            (json.decode(response.body)["detail"] ?? detail)
+                                .toString();
+                      } catch (_) {}
+                      throw Exception(detail);
+                    }
+                  }
+
                   await FirebaseFirestore.instance
                       .collection("users")
                       .doc(documentId)
                       .update({
                         "name": nameController.text.trim(),
-                        "email": emailController.text.trim(),
+                        "email": newEmail,
                         "phone": phoneController.text.trim(),
                         "cargo": selectedRole,
                         "estado": selectedState,
@@ -1387,9 +1473,11 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
     required TextEditingController controller,
     required String label,
     required IconData icon,
+    bool obscure = false,
   }) {
     return TextField(
       controller: controller,
+      obscureText: obscure,
       style: const TextStyle(color: Colors.white),
       decoration: _dialogInputDecoration(label, icon),
     );
@@ -1453,6 +1541,23 @@ class _UsuariosScreenState extends State<UsuariosScreen> {
     if (confirmed != true) return;
 
     try {
+      // 🔹 Borra primero la cuenta de Firebase Auth (vía backend con Admin
+      // SDK); si esto falla, no tocamos Firestore para no dejar el usuario
+      // a medio eliminar.
+      final uri = Uri.parse(
+        "https://eco-refill-backend-992396324099.us-central1.run.app/api/auth/delete_user/$documentId",
+      );
+      final response = await http.delete(uri);
+
+      if (response.statusCode != 200) {
+        String detail = response.body;
+        try {
+          detail = (json.decode(response.body)["detail"] ?? detail)
+              .toString();
+        } catch (_) {}
+        throw Exception(detail);
+      }
+
       await FirebaseFirestore.instance
           .collection("users")
           .doc(documentId)

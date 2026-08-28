@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
@@ -117,6 +118,28 @@ class _LoginScreenState extends State<LoginScreen>
       if (!mounted) return;
 
       if (user != null) {
+        // 🔹 Verificar el estado del usuario en Firestore antes de dejarlo
+        // entrar. El campo "estado" no vive en Firebase Auth, así que hay
+        // que consultarlo aparte.
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+
+        final estado = (userDoc.data()?['estado'] ?? 'Activo').toString();
+
+        if (estado.toLowerCase() == 'inactivo') {
+          // Cerramos la sesión que Firebase Auth acaba de abrir para que
+          // no quede autenticado aunque no lo dejemos avanzar.
+          await FirebaseAuth.instance.signOut();
+          if (!mounted) return;
+          _showAlert(
+            'Esta cuenta se encuentra inactiva. Contacta a un administrador.',
+          );
+          return;
+        }
+
+        if (!mounted) return;
         Navigator.pushReplacementNamed(context, '/pantallabienvenida');
       } else {
         _showAlert('No se pudo iniciar sesión. Verifica tus datos.');
@@ -148,7 +171,7 @@ class _LoginScreenState extends State<LoginScreen>
         return 'El formato del correo electrónico no es válido.';
 
       case 'user-disabled':
-        return 'Esta cuenta se encuentra deshabilitada.';
+        return 'Esta cuenta se encuentra inactiva. Contacta a un administrador.';
 
       case 'too-many-requests':
         return 'Demasiados intentos. Espera unos minutos e inténtalo nuevamente.';
@@ -235,6 +258,13 @@ class _LoginScreenState extends State<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
+    // 🔹 En celular el botón "Inicio" (FAB, esquina superior izquierda)
+    // quedaba flotando justo encima de la tarjeta, tapando el nombre de
+    // la empresa en el header compacto. Le damos a la tarjeta un margen
+    // superior extra solo en pantallas angostas para que el botón quede
+    // en su propio espacio, sobre el fondo, sin superponerse.
+    final bool isMobile = MediaQuery.of(context).size.width < 650;
+
     return Scaffold(
       backgroundColor: Colors.transparent,
 
@@ -269,45 +299,57 @@ class _LoginScreenState extends State<LoginScreen>
         ),
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: AnimatedBuilder(
-              animation: _pulseController,
-              builder: (context, child) {
-                return ClipRRect(
-                  borderRadius: BorderRadius.circular(18),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                    child: Container(
-                      constraints: const BoxConstraints(
-                        maxWidth: 760,
-                        maxHeight: 620,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(
-                          color: const Color.fromARGB(255, 117, 33, 196),
-                          width: 1,
+            padding: EdgeInsets.fromLTRB(24, isMobile ? 92 : 24, 24, 24),
+            child: LayoutBuilder(
+              builder: (context, outerConstraints) {
+                // En pantallas angostas el layout pasa a columna
+                // (presentación + formulario apilados), así que no le
+                // ponemos techo de altura fijo: dejamos que la tarjeta
+                // crezca lo que necesite y el scroll externo se encarga
+                // del resto. En pantallas anchas (Row lado a lado) sí
+                // conservamos el maxHeight de 620.
+                final bool isSmallScreen = outerConstraints.maxWidth < 650;
+
+                return AnimatedBuilder(
+                  animation: _pulseController,
+                  builder: (context, child) {
+                    return ClipRRect(
+                      borderRadius: BorderRadius.circular(18),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                        child: Container(
+                          constraints: BoxConstraints(
+                            maxWidth: 760,
+                            maxHeight: isSmallScreen ? double.infinity : 620,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: const Color.fromARGB(255, 117, 33, 196),
+                              width: 1,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color.fromARGB(255, 200, 155, 255),
+                                blurRadius: _glowAnimation.value,
+                                spreadRadius: _glowAnimation.value / 40,
+                              ),
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.15),
+                                blurRadius: 25,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: child,
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color.fromARGB(255, 200, 155, 255),
-                            blurRadius: _glowAnimation.value,
-                            spreadRadius: _glowAnimation.value / 40,
-                          ),
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.15),
-                            blurRadius: 25,
-                            offset: const Offset(0, 10),
-                          ),
-                        ],
                       ),
-                      child: child,
-                    ),
-                  ),
+                    );
+                  },
+                  child: _buildLoginContent(isSmallScreen),
                 );
               },
-              child: _buildLoginContent(),
             ),
           ),
         ),
@@ -315,25 +357,76 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  Widget _buildLoginContent() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final bool isSmallScreen = constraints.maxWidth < 650;
+  Widget _buildLoginContent(bool isSmallScreen) {
+    if (isSmallScreen) {
+      return Column(
+        children: [
+          _buildCompactHeader(),
+          _buildFormPanel(isSmallScreen: true),
+        ],
+      );
+    }
 
-        if (isSmallScreen) {
-          return Column(
-            children: [_buildPresentationPanel(), _buildFormPanel()],
-          );
-        }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(flex: 4, child: _buildPresentationPanel()),
+        Expanded(flex: 6, child: _buildFormPanel(isSmallScreen: false)),
+      ],
+    );
+  }
 
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(flex: 4, child: _buildPresentationPanel()),
-            Expanded(flex: 6, child: _buildFormPanel()),
-          ],
-        );
-      },
+  // Versión compacta del panel de presentación para pantallas angostas:
+  // conserva el icono, el título y el subtítulo, pero sin la imagen
+  // grande, el mensaje largo ni la fila de features — así el
+  // formulario de login queda siempre visible sin necesitar un techo
+  // de altura fijo.
+  Widget _buildCompactHeader() {
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: Color(0xff120B22),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(15),
+          topRight: Radius.circular(15),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.inventory_2_outlined,
+            color: Color.fromARGB(255, 179, 100, 252),
+            size: 28,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'ECO - REFILL',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Gestión del ciclo del filamento 3D',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(.55),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -438,19 +531,27 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  Widget _buildFormPanel() {
+  Widget _buildFormPanel({required bool isSmallScreen}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 42, vertical: 28),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
+      padding: EdgeInsets.symmetric(
+        horizontal: isSmallScreen ? 24 : 42,
+        vertical: isSmallScreen ? 24 : 28,
+      ),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [Color(0xff6F36D8), Color(0xff261642), Color(0xff131020)],
         ),
-        borderRadius: BorderRadius.only(
-          topRight: Radius.circular(15),
-          bottomRight: Radius.circular(15),
-        ),
+        borderRadius: isSmallScreen
+            ? const BorderRadius.only(
+                bottomLeft: Radius.circular(15),
+                bottomRight: Radius.circular(15),
+              )
+            : const BorderRadius.only(
+                topRight: Radius.circular(15),
+                bottomRight: Radius.circular(15),
+              ),
       ),
       child: SingleChildScrollView(
         child: Column(

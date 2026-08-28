@@ -20,21 +20,49 @@ void registerCameraView() {
     final video = html.VideoElement()
       ..autoplay = true
       ..muted = true
+      // Crítico en iOS/Safari: sin este atributo, el navegador abre la
+      // cámara en pantalla completa en vez de mostrarla dentro de la app.
+      ..setAttribute('playsinline', 'true')
       ..style.width = '100%'
       ..style.height = '100%'
       ..style.objectFit = 'cover';
 
+    _iniciarCamara(video);
+
+    return video;
+  });
+}
+
+// Pide la cámara frontal (selfie) primero, ya que es la esperada para
+// reconocimiento facial y la que muchos celulares Android NO usan por
+// defecto si solo se pide {'video': true}. Si el dispositivo no tiene
+// cámara frontal (o el navegador no soporta 'facingMode'), cae de
+// vuelta a pedir cualquier cámara disponible.
+void _iniciarCamara(html.VideoElement video) {
+  html.window.navigator.mediaDevices
+      ?.getUserMedia({
+        'video': {'facingMode': 'user'},
+        'audio': false,
+      })
+      .then((stream) => _asignarStream(video, stream))
+      .catchError((error) {
+    // ignore: avoid_print
+    print('No se pudo abrir la cámara frontal, probando genérica: $error');
     html.window.navigator.mediaDevices
         ?.getUserMedia({'video': true, 'audio': false})
-        .then((stream) {
-      video.srcObject = stream;
-    }).catchError((error) {
+        .then((stream) => _asignarStream(video, stream))
+        .catchError((error) {
       // Esto se ve en la consola del navegador (F12) si el usuario
       // niega el permiso de cámara o no hay ninguna disponible.
       // ignore: avoid_print
       print('Error accediendo a la cámara: $error');
     });
-
-    return video;
   });
+}
+
+void _asignarStream(html.VideoElement video, html.MediaStream stream) {
+  video.srcObject = stream;
+  // En varios navegadores móviles el autoplay no basta; se llama play()
+  // explícitamente una vez asignado el stream.
+  video.play();
 }

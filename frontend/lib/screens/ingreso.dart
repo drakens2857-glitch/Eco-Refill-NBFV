@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
+import '../services/permisos.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class IngresoScreen extends StatefulWidget {
@@ -33,9 +34,13 @@ class _IngresoScreenState extends State<IngresoScreen>
 
   final Map<String, TextEditingController> _cantidadControllers = {};
   final Map<String, TextEditingController> _notasControllers = {};
+  final Map<String, TextEditingController> _tamanoControllers = {};
+  final Map<String, TextEditingController> _composicionControllers = {};
   final Map<String, String?> _colorSeleccionado = {};
   final Map<String, DateTime> _fechaSeleccionada = {};
   final Map<String, bool> _verTodos = {};
+  // Controla qué grupos (categoría-color) están expandidos en la lista de registros
+  final Map<String, bool> _grupoExpandido = {};
 
   static const List<String> _coloresDisponibles = [
     "Rojo",
@@ -50,6 +55,28 @@ class _IngresoScreenState extends State<IngresoScreen>
     "Gris",
   ];
 
+  // Unidades disponibles para el tamaño
+  static const List<String> _unidadesTamano = ["cm", "ml"];
+
+  // Composiciones químicas disponibles para creación de filamento 3D
+  static const List<String> _composicionesQuimicas = [
+    "PLA",
+    "ABS",
+    "PETG",
+    "PET",
+    "TPU",
+    "HDPE",
+    "PP",
+    "PVC",
+    "Nylon (PA)",
+    "ASA",
+    "PC",
+    "HIPS",
+  ];
+
+  final Map<String, String> _unidadTamanoSeleccionada = {};
+  final Map<String, String?> _composicionSeleccionada = {};
+
   @override
   void initState() {
     super.initState();
@@ -59,9 +86,13 @@ class _IngresoScreenState extends State<IngresoScreen>
     for (final categoria in categorias) {
       _cantidadControllers[categoria] = TextEditingController();
       _notasControllers[categoria] = TextEditingController();
+      _tamanoControllers[categoria] = TextEditingController();
+      _composicionControllers[categoria] = TextEditingController();
       _colorSeleccionado[categoria] = null;
       _fechaSeleccionada[categoria] = DateTime.now();
       _verTodos[categoria] = false;
+      _unidadTamanoSeleccionada[categoria] = _unidadesTamano.first;
+      _composicionSeleccionada[categoria] = null;
     }
 
     _loadUserRole();
@@ -74,6 +105,12 @@ class _IngresoScreenState extends State<IngresoScreen>
       controller.dispose();
     }
     for (final controller in _notasControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _tamanoControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in _composicionControllers.values) {
       controller.dispose();
     }
     super.dispose();
@@ -192,6 +229,13 @@ class _IngresoScreenState extends State<IngresoScreen>
     final registradoPor =
         FirebaseAuth.instance.currentUser?.email ?? "Desconocido";
 
+    final valorTamano = _tamanoControllers[categoria]!.text.trim();
+    final unidadTamano = _unidadTamanoSeleccionada[categoria] ?? "cm";
+    final tamanoFinal = valorTamano.isNotEmpty
+        ? "$valorTamano $unidadTamano"
+        : "";
+    final composicionFinal = _composicionSeleccionada[categoria] ?? "";
+
     await FirebaseFirestore.instance.collection('ingresos').add({
       "categoria": categoria,
       "color": color,
@@ -199,15 +243,21 @@ class _IngresoScreenState extends State<IngresoScreen>
       "fecha": fecha.toString(),
       "registradoPor": registradoPor,
       "notas": _notasControllers[categoria]!.text,
+      "tamano": tamanoFinal,
+      "composicionQuimica": composicionFinal,
     });
 
     _cantidadControllers[categoria]!.clear();
     _notasControllers[categoria]!.clear();
+    _tamanoControllers[categoria]!.clear();
+    _composicionControllers[categoria]!.clear();
 
     if (!mounted) return;
     setState(() {
       _colorSeleccionado[categoria] = null;
       _fechaSeleccionada[categoria] = DateTime.now();
+      _unidadTamanoSeleccionada[categoria] = _unidadesTamano.first;
+      _composicionSeleccionada[categoria] = null;
     });
 
     ScaffoldMessenger.of(
@@ -217,16 +267,26 @@ class _IngresoScreenState extends State<IngresoScreen>
 
   @override
   Widget build(BuildContext context) {
+    final bool isMobile = MediaQuery.of(context).size.width < 900;
+
     return Scaffold(
       backgroundColor: darkBg,
+      drawer: isMobile
+          ? Drawer(
+              backgroundColor: sidebarBg,
+              child: SafeArea(child: _buildSidebar(context)),
+            )
+          : null,
+      appBar: isMobile ? _buildMobileAppBar(context) : null,
       body: SafeArea(
+        top: !isMobile,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildSidebar(context),
+            if (!isMobile) _buildSidebar(context),
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(32),
+                padding: EdgeInsets.all(isMobile ? 16 : 32),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
@@ -235,7 +295,7 @@ class _IngresoScreenState extends State<IngresoScreen>
                     _buildTabsRow(),
                     const SizedBox(height: 24),
                     SizedBox(
-                      height: 720,
+                      height: isMobile ? 900 : 720,
                       child: TabBarView(
                         controller: _tabController,
                         children: categorias
@@ -255,7 +315,43 @@ class _IngresoScreenState extends State<IngresoScreen>
     );
   }
 
-  Widget _buildSidebar(BuildContext context) {
+  PreferredSizeWidget _buildMobileAppBar(BuildContext context) {
+    return AppBar(
+      backgroundColor: sidebarBg,
+      iconTheme: const IconThemeData(color: Colors.white),
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              border: Border.all(color: const Color(0xFF8B5CF6)),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.view_in_ar_rounded,
+              color: Color(0xFFC084FC),
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Text(
+            "ECO-REFILL",
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.1,
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // En celular este contenido se muestra dentro de un Drawer; en pantallas
+  // grandes queda siempre visible como barra lateral fija.
+   Widget _buildSidebar(BuildContext context) {
     return Container(
       width: 220,
       decoration: const BoxDecoration(
@@ -296,56 +392,77 @@ class _IngresoScreenState extends State<IngresoScreen>
             ),
           ),
           const SizedBox(height: 40),
-          _sidebarItem(
-            Icons.home_outlined,
-            "Inicio",
-            false,
-            () =>
-                Navigator.pushReplacementNamed(context, '/pantallabienvenida'),
-          ),
-          _sidebarItem(
-            Icons.person_outline_rounded,
-            "Mi Perfil",
-            false,
-            () => Navigator.pushReplacementNamed(context, '/perfil'),
-          ),
-          _sidebarItem(
-            Icons.dashboard_outlined,
-            "Dashboard",
-            false,
-            () => Navigator.pushReplacementNamed(context, '/dashboard'),
-          ),
-          _sidebarItem(Icons.add_box_outlined, "Ingreso Plásticos", true, null),
-          _sidebarItem(
-            Icons.recycling_rounded,
-            "Materiales",
-            false,
-            () => Navigator.pushReplacementNamed(context, '/materiales'),
-          ),
-          _sidebarItem(
-            Icons.settings_outlined,
-            "Procesos",
-            false,
-            () => Navigator.pushReplacementNamed(context, '/procesos'),
-          ),
-          _sidebarItem(
-            Icons.groups_outlined,
-            "Usuarios",
-            false,
-            () => Navigator.pushReplacementNamed(context, '/usuarios'),
-          ),
-          _sidebarItem(
-            Icons.person_add_alt_1_outlined,
-            "Registrar Usuario",
-            false,
-            () => Navigator.pushReplacementNamed(context, '/register'),
-          ),
-          _sidebarItem(
-            Icons.task_alt_outlined,
-            "Tareas",
-            false,
-            () => Navigator.pushReplacementNamed(context, '/tareas'),
-          ),
+          if (Permisos.puedeVer(userRole, 'inicio'))
+            _sidebarItem(
+              Icons.home_outlined,
+              "Inicio",
+              false,
+              () => Navigator.pushReplacementNamed(
+                  context, '/pantallabienvenida'),
+            ),
+          if (Permisos.puedeVer(userRole, 'perfil'))
+            _sidebarItem(
+              Icons.person_outline_rounded,
+              "Mi Perfil",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/perfil'),
+            ),
+          if (Permisos.puedeVer(userRole, 'dashboard'))
+            _sidebarItem(
+              Icons.dashboard_outlined,
+              "Crear Publicaciones",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/dashboard'),
+            ),
+          if (Permisos.puedeVer(userRole, 'ingreso'))
+            _sidebarItem(
+              Icons.add_box_outlined,
+              "Ingreso Plásticos",
+              true,
+              null,
+            ),
+          if (Permisos.puedeVer(userRole, 'materiales'))
+            _sidebarItem(
+              Icons.recycling_rounded,
+              "Materiales",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/materiales'),
+            ),
+          if (Permisos.puedeVer(userRole, 'procesos'))
+            _sidebarItem(
+              Icons.settings_outlined,
+              "Procesos",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/procesos'),
+            ),
+          if (Permisos.puedeVer(userRole, 'usuarios'))
+            _sidebarItem(
+              Icons.groups_outlined,
+              "Usuarios",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/usuarios'),
+            ),
+          if (Permisos.puedeVer(userRole, 'register'))
+            _sidebarItem(
+              Icons.person_add_alt_1_outlined,
+              "Registrar Usuario",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/register'),
+            ),
+          if (Permisos.puedeVer(userRole, 'tareas'))
+            _sidebarItem(
+              Icons.task_alt_outlined,
+              "Tareas",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/tareas'),
+            ),
+          if (Permisos.puedeVer(userRole, 'reportes'))
+            _sidebarItem(
+              Icons.summarize_outlined,
+              "Reportes",
+              false,
+              () => Navigator.pushReplacementNamed(context, '/reportes'),
+            ),
           const Spacer(),
           _sidebarItem(
             Icons.logout_rounded,
@@ -365,9 +482,7 @@ class _IngresoScreenState extends State<IngresoScreen>
     bool active,
     VoidCallback? onTap,
   ) {
-    final Color background = active
-        ? neonPurple.withOpacity(0.15)
-        : Colors.transparent;
+    final Color background = active ? neonPurple : Colors.transparent;
     final Color foreground = active ? Colors.white : Colors.white70;
 
     return Padding(
@@ -536,8 +651,50 @@ class _IngresoScreenState extends State<IngresoScreen>
           crecimiento = totalEsteMes > 0 ? 100 : 0;
         }
 
+        // Agrupar los registros por color: si hoy se registran botellas azules
+        // y mañana se registran más botellas azules, aparecen en el mismo grupo.
+        final Map<String, List<Map<String, dynamic>>> gruposPorColorMap = {};
+        for (final registro in registros) {
+          final data = registro["data"] as Map<String, dynamic>;
+          final colorRegistro = (data["color"] ?? "Sin color").toString();
+          gruposPorColorMap.putIfAbsent(colorRegistro, () => []).add(registro);
+        }
+
+        final grupos = gruposPorColorMap.entries.map((entry) {
+          final registrosDelGrupo = entry.value;
+          final totalCantidad = registrosDelGrupo.fold<int>(
+            0,
+            (sum, r) =>
+                sum +
+                (((r["data"] as Map<String, dynamic>)["cantidad"] ?? 0) as int),
+          );
+          final fechaMasReciente = registrosDelGrupo
+              .map(
+                (r) =>
+                    DateTime.tryParse(
+                      (r["data"] as Map<String, dynamic>)["fecha"]
+                              ?.toString() ??
+                          "",
+                    ) ??
+                    DateTime(2000),
+              )
+              .reduce((a, b) => a.isAfter(b) ? a : b);
+          return {
+            "color": entry.key,
+            "total": totalCantidad,
+            "registros": registrosDelGrupo,
+            "fechaReciente": fechaMasReciente,
+          };
+        }).toList();
+
+        grupos.sort(
+          (a, b) => (b["fechaReciente"] as DateTime).compareTo(
+            a["fechaReciente"] as DateTime,
+          ),
+        );
+
         final verTodos = _verTodos[categoria] ?? false;
-        final visibles = verTodos ? registros : registros.take(4).toList();
+        final gruposVisibles = verTodos ? grupos : grupos.take(4).toList();
 
         return LayoutBuilder(
           builder: (context, constraints) {
@@ -555,8 +712,8 @@ class _IngresoScreenState extends State<IngresoScreen>
                 const SizedBox(height: 24),
                 _buildRegistrosCard(
                   categoria,
-                  visibles,
-                  registros.length,
+                  gruposVisibles,
+                  grupos.length,
                   verTodos,
                 ),
               ],
@@ -720,6 +877,146 @@ class _IngresoScreenState extends State<IngresoScreen>
               focusedBorder: const OutlineInputBorder(
                 borderRadius: BorderRadius.all(Radius.circular(12)),
                 borderSide: BorderSide(color: neonPurple),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 3,
+                child: TextField(
+                  controller: _tamanoControllers[categoria],
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: "Tamaño",
+                    hintText: "Ej: 500, 2, 20",
+                    hintStyle: const TextStyle(color: Colors.white38),
+                    labelStyle: const TextStyle(color: Colors.white54),
+                    prefixIcon: Icon(
+                      Icons.straighten_outlined,
+                      color: neonPurple.withOpacity(0.8),
+                    ),
+                    filled: true,
+                    fillColor: darkBg,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: neonPurple.withOpacity(0.3),
+                      ),
+                    ),
+                    focusedBorder: const OutlineInputBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(12)),
+                      borderSide: BorderSide(color: neonPurple),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: Container(
+                  height: 56,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: darkBg,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: neonPurple.withOpacity(0.3)),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _unidadTamanoSeleccionada[categoria],
+                      dropdownColor: cardBg,
+                      isExpanded: true,
+                      style: const TextStyle(color: Colors.white),
+                      items: _unidadesTamano
+                          .map(
+                            (unidad) => DropdownMenuItem(
+                              value: unidad,
+                              child: Text(
+                                unidad,
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (valor) {
+                        setState(() {
+                          _unidadTamanoSeleccionada[categoria] =
+                              valor ?? _unidadesTamano.first;
+                        });
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: darkBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: neonPurple.withOpacity(0.3)),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _composicionSeleccionada[categoria],
+                isExpanded: true,
+                dropdownColor: cardBg,
+                hint: Row(
+                  children: [
+                    Icon(
+                      Icons.science_outlined,
+                      color: neonPurple.withOpacity(0.8),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      "Composición química",
+                      style: TextStyle(color: Colors.white54),
+                    ),
+                  ],
+                ),
+                selectedItemBuilder: (context) {
+                  return _composicionesQuimicas.map((composicion) {
+                    return Row(
+                      children: [
+                        Icon(
+                          Icons.science_outlined,
+                          color: neonPurple.withOpacity(0.8),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          composicion,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ],
+                    );
+                  }).toList();
+                },
+                items: _composicionesQuimicas
+                    .map(
+                      (composicion) => DropdownMenuItem(
+                        value: composicion,
+                        child: Text(
+                          composicion,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (valor) {
+                  setState(() {
+                    _composicionSeleccionada[categoria] = valor;
+                  });
+                },
               ),
             ),
           ),
@@ -936,8 +1233,8 @@ class _IngresoScreenState extends State<IngresoScreen>
 
   Widget _buildRegistrosCard(
     String categoria,
-    List<Map<String, dynamic>> visibles,
-    int totalRegistros,
+    List<Map<String, dynamic>> gruposVisibles,
+    int totalGrupos,
     bool verTodos,
   ) {
     return Container(
@@ -967,7 +1264,7 @@ class _IngresoScreenState extends State<IngresoScreen>
                 ),
               ),
               const Spacer(),
-              if (totalRegistros > 4)
+              if (totalGrupos > 4)
                 TextButton.icon(
                   onPressed: () {
                     setState(() {
@@ -987,7 +1284,7 @@ class _IngresoScreenState extends State<IngresoScreen>
             ],
           ),
           const SizedBox(height: 12),
-          if (visibles.isEmpty)
+          if (gruposVisibles.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 24),
               child: Center(
@@ -999,10 +1296,134 @@ class _IngresoScreenState extends State<IngresoScreen>
             )
           else
             Column(
-              children: visibles.map((registro) {
-                final data = registro["data"] as Map<String, dynamic>;
-                return _buildRegistroItem(data);
-              }).toList(),
+              children: gruposVisibles
+                  .map((grupo) => _buildGrupoItem(categoria, grupo))
+                  .toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGrupoItem(String categoria, Map<String, dynamic> grupo) {
+    final color = grupo["color"] as String;
+    final total = grupo["total"] as int;
+    final registrosDelGrupo =
+        grupo["registros"] as List<Map<String, dynamic>>;
+    final circleColor = _colorFromName(color);
+    final claveGrupo = "$categoria-$color";
+    final expandido = _grupoExpandido[claveGrupo] ?? false;
+
+    // Ordenar los registros del grupo del más reciente al más antiguo
+    final registrosOrdenados = List<Map<String, dynamic>>.from(
+      registrosDelGrupo,
+    )..sort((a, b) {
+      final fechaA =
+          DateTime.tryParse(
+            (a["data"] as Map<String, dynamic>)["fecha"]?.toString() ?? "",
+          ) ??
+          DateTime(2000);
+      final fechaB =
+          DateTime.tryParse(
+            (b["data"] as Map<String, dynamic>)["fecha"]?.toString() ?? "",
+          ) ??
+          DateTime(2000);
+      return fechaB.compareTo(fechaA);
+    });
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: darkBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () {
+              setState(() {
+                _grupoExpandido[claveGrupo] = !expandido;
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: circleColor.withOpacity(0.18),
+                    ),
+                    child: Icon(
+                      Icons.local_drink_outlined,
+                      color: circleColor,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Color: $color",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          "${registrosOrdenados.length} "
+                          "${registrosOrdenados.length == 1 ? 'registro' : 'registros'}",
+                          style: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      const Text(
+                        "Total",
+                        style: TextStyle(color: Colors.white38, fontSize: 11),
+                      ),
+                      Text(
+                        "$total",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 12),
+                  Icon(
+                    expandido ? Icons.expand_less : Icons.expand_more,
+                    color: neonPurple.withOpacity(0.8),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (expandido)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+              child: Column(
+                children: registrosOrdenados.map((registro) {
+                  final data = registro["data"] as Map<String, dynamic>;
+                  return _buildRegistroItem(data);
+                }).toList(),
+              ),
             ),
         ],
       ),
@@ -1010,53 +1431,58 @@ class _IngresoScreenState extends State<IngresoScreen>
   }
 
   Widget _buildRegistroItem(Map<String, dynamic> data) {
-    final color = data["color"]?.toString() ?? "-";
     final cantidad = data["cantidad"]?.toString() ?? "0";
     final registradoPor = data["registradoPor"]?.toString() ?? "Desconocido";
     final fecha = DateTime.tryParse(data["fecha"]?.toString() ?? "");
     final circleColor = _colorFromName(data["color"]?.toString());
+    final tamano = data["tamano"]?.toString() ?? "";
+    final composicion = data["composicionQuimica"]?.toString() ?? "";
+    final detalles = [
+      if (tamano.isNotEmpty) "Tamaño: $tamano",
+      if (composicion.isNotEmpty) "Composición: $composicion",
+    ].join(" · ");
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: darkBg,
-        borderRadius: BorderRadius.circular(14),
+        color: cardBg,
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Row(
         children: [
           Container(
-            width: 40,
+            width: 8,
             height: 40,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: circleColor.withOpacity(0.18),
-            ),
-            child: Icon(
-              Icons.local_drink_outlined,
               color: circleColor,
-              size: 20,
+              borderRadius: BorderRadius.circular(4),
             ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "Color: $color",
+                  "Registrado por: $registradoPor",
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 14,
+                    fontSize: 13,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  "Registrado por: $registradoPor",
-                  style: const TextStyle(color: Colors.white54, fontSize: 12),
-                ),
+                if (detalles.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    detalles,
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

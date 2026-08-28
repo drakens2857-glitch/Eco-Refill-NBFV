@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:typed_data';
+import 'api_config.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -13,18 +14,49 @@ class AuthService {
 
   /// 🔹 Login con email y contraseña
   Future<User?> login(String email, String password) async {
+    UserCredential credential;
     try {
-      UserCredential credential = await _auth.signInWithEmailAndPassword(
+      credential = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
-      _adminEmail = email;
-      _adminPassword = password;
-      return credential.user;
     } on FirebaseAuthException catch (e) {
       print("Error en login: ${e.code} - ${e.message}");
       return null;
     }
+
+    final User? user = credential.user;
+
+    if (user != null) {
+      final doc = await _db.collection("users").doc(user.uid).get();
+
+      // 🔹 Si el perfil ya no existe en Firestore (usuario eliminado desde
+      // el panel), no dejamos entrar aunque la cuenta de Firebase Auth
+      // todavía exista.
+      if (!doc.exists) {
+        await _auth.signOut();
+        throw FirebaseAuthException(
+          code: 'user-not-found',
+          message: 'Esta cuenta ya no existe.',
+        );
+      }
+
+      // 🔹 Verifica que la cuenta no haya sido inactivada por un admin.
+      final estado = (doc.data()?["estado"] ?? "Activo").toString();
+
+      if (estado.toLowerCase() == "inactivo") {
+        await _auth.signOut();
+        throw FirebaseAuthException(
+          code: 'user-disabled',
+          message:
+              'Esta cuenta ha sido inactivada. Contacta a un administrador.',
+        );
+      }
+    }
+
+    _adminEmail = email;
+    _adminPassword = password;
+    return user;
   }
 
   /// 🔹 Registro normal
@@ -72,7 +104,7 @@ class AuthService {
       String cargo,
       Uint8List faceBytes) async {
     try {
-      var uri = Uri.parse("http://localhost:8000/api/auth/register_with_face");
+      var uri = Uri.parse("${ApiConfig.apiBaseUrl}/auth/register_with_face");
       var request = http.MultipartRequest("POST", uri);
 
       request.fields["name"] = name;
@@ -90,10 +122,17 @@ class AuthService {
       if (response.statusCode == 200 && data["uid"] != null) {
         return true;
       }
-      return false;
+
+      // 🔹 Antes esto solo devolvía "false" y se perdía el motivo real
+      // (por ejemplo: "No se detectó ningún rostro.", "Debe existir
+      // solamente un rostro." o que el correo ya está registrado).
+      // Ahora lo lanzamos como excepción para que la pantalla de
+      // registro pueda mostrar el mensaje exacto del servidor.
+      final detalle = data["detail"] ?? data["message"] ?? respStr;
+      throw Exception(detalle);
     } catch (e) {
       print("Error en registro con rostro: $e");
-      return false;
+      rethrow;
     }
   }
 
@@ -133,7 +172,7 @@ class AuthService {
   Future<String?> getUidByEmail(String email) async {
     try {
       final uri = Uri.parse(
-        "http://127.0.0.1:8000/api/auth/uid_by_email?email=$email",
+        "${ApiConfig.apiBaseUrl}/auth/uid_by_email?email=$email",
       );
 
       final response = await http.get(uri);

@@ -26,6 +26,10 @@ dependencies:
   camera: ^0.10.5+2   # 🔹 aquí va, no como bloque aparte
   convert: ^3.1.1     # 🔹 agregado para decodificar hex a bytes
 
+  # 🔹 Informes IA (PDF descargable)
+  pdf: ^3.11.1
+  printing: ^5.13.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -44,6 +48,11 @@ flutter:
     - assets/images/Fondo1.png
     - assets/images/Fondo.jpeg
     - assets/images/Filamento3D.png
+    - assets/images/Filamento3D_verde.png
     - assets/images/Icon1.png
     - assets/images/FondoA.png
-    
+    - assets/images/proceso/paso1_plastico.png
+    - assets/images/proceso/paso2_trituracion.png
+    - assets/images/proceso/paso3_extrusion.png
+    - assets/images/proceso/paso4_enfriamiento.png
+    - assets/images/proceso/paso5_filamento.png

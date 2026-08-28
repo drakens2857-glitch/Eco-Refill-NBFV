@@ -1,9 +1,10 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:typed_data';
+import 'api_config.dart';
 
 class ApiService {
-  final String baseUrl = "http://127.0.0.1:8000/api";
+  final String baseUrl = ApiConfig.apiBaseUrl;
 
   /// 🔹 Registrar usuario
   Future<void> crearUsuario(String email, String password) async {
@@ -30,6 +31,50 @@ class ApiService {
       return jsonDecode(response.body);
     } else {
       throw Exception("Error al obtener publicaciones: ${response.body}");
+    }
+  }
+
+  /// 🔹 Editar publicación existente (título, descripción, autor, categoría)
+  Future<void> updatePost(
+    String postId, {
+    String? title,
+    String? description,
+    String? author,
+    String? category,
+  }) async {
+    final Map<String, dynamic> body = {};
+    if (title != null) body['title'] = title;
+    if (description != null) body['description'] = description;
+    if (author != null) body['author'] = author;
+    if (category != null) body['category'] = category;
+
+    final response = await http.put(
+      Uri.parse("$baseUrl/posts/$postId"),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode(body),
+    );
+
+    if (response.statusCode != 200) {
+      String detail = response.body;
+      try {
+        detail = (jsonDecode(response.body)["detail"] ?? detail).toString();
+      } catch (_) {}
+      throw Exception(detail);
+    }
+  }
+
+  /// 🔹 Eliminar publicación
+  Future<void> deletePost(String postId) async {
+    final response = await http.delete(
+      Uri.parse("$baseUrl/posts/$postId"),
+    );
+
+    if (response.statusCode != 200) {
+      String detail = response.body;
+      try {
+        detail = (jsonDecode(response.body)["detail"] ?? detail).toString();
+      } catch (_) {}
+      throw Exception(detail);
     }
   }
 
